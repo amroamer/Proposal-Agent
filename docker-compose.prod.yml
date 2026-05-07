@@ -1,0 +1,40 @@
+# Proposal Agent – Production Overlay
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+services:
+
+  nginx:
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - frontend_dist:/usr/share/nginx/html:ro
+
+  backend:
+    environment:
+      - ENVIRONMENT=production
+    ports: []   # API is only reachable through Nginx in prod
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: 4G
+
+  worker:
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2G
+
+  db:
+    ports: []   # Not exposed to host in prod
+    volumes:
+      - /mnt/data/pgdata:/var/lib/postgresql/data
+
+  ollama:
+    volumes:
+      - /mnt/data/ollama:/root/.ollama

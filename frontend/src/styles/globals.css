@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* CSS variables for KPMG palette (consumed by non-Tailwind elements) */
+:root {
+  --kpmg-blue: #00338D;
+  --kpmg-lightblue: #0091DA;
+  --kpmg-purple: #470A68;
+  --kpmg-teal: #00A3A1;
+  --kpmg-gray-600: #4D4D4F;
+  --kpmg-gray-100: #EEEEEE;
+}
+
+/* Arabic RTL adjustments */
+html[dir="rtl"] body { font-family: var(--font-arabic, "IBM Plex Sans Arabic", Arial, sans-serif); }
+
+/* Reusable component patterns */
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-md bg-kpmg-blue px-4 py-2
+           text-sm font-semibold text-white shadow-sm hover:bg-kpmg-purple
+           focus:outline-none focus:ring-2 focus:ring-kpmg-lightblue focus:ring-offset-2
+           disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-md bg-white px-4 py-2
+           text-sm font-semibold text-kpmg-gray-700 shadow-sm ring-1 ring-inset ring-kpmg-gray-200
+           hover:bg-kpmg-gray-50 focus:outline-none focus:ring-2 focus:ring-kpmg-lightblue
+           disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
+  }
+  .btn-danger {
+    @apply inline-flex items-center justify-center rounded-md bg-kpmg-error px-4 py-2
+           text-sm font-semibold text-white shadow-sm hover:brightness-90
+           focus:outline-none focus:ring-2 focus:ring-kpmg-error focus:ring-offset-2
+           disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
+  }
+  .input-field {
+    @apply block w-full rounded-md border-0 px-3 py-2 text-kpmg-gray-800
+           shadow-sm ring-1 ring-inset ring-kpmg-gray-200 placeholder:text-kpmg-gray-400
+           focus:ring-2 focus:ring-inset focus:ring-kpmg-blue text-sm;
+  }
+  .card {
+    @apply bg-white rounded-lg shadow-card p-6;
+  }
+}

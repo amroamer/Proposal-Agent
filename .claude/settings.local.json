@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(openssl version *)",
+      "Bash(unzip -l ~/Downloads/proposal-agent.zip)",
+      "Bash(unzip -o /c/Users/amroa/Downloads/proposal-agent.zip -d /c/projects/)",
+      "Bash(openssl rand *)",
+      "Bash(echo \"JWT=$\\(openssl rand -hex 64\\)\")",
+      "Bash(echo \"PG=$\\(openssl rand -base64 24)",
+      "Bash(python -c ' *)",
+      "Bash(chmod +x scripts/*.sh ollama/entrypoint.sh)",
+      "Bash(tasklist)",
+      "Bash(docker stop *)",
+      "Bash(docker rm *)",
+      "Bash(echo \"---EXIT $?---\")",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://localhost:8090/ProposalAgent/api/health)",
+      "Bash(curl -s http://localhost:8090/ProposalAgent/api/health)",
+      "Bash(curl -s http://localhost:8090/ProposalAgent/api/ready)",
+      "Bash(curl -s -X POST http://localhost:8090/ProposalAgent/api/v1/auth/signin -H \"Content-Type: application/json\" -d '{\"email\":\"admin@kpmg.local\",\"password\":\"345hIk3rw0VwaI2q%*R%\"}')",
+      "Bash(curl -s -X POST http://localhost:8090/ProposalAgent/api/v1/auth/signin -H \"Content-Type: application/json\" -d '{\"email\":\"admin@kpmg.io\",\"password\":\"345hIk3rw0VwaI2q%*R%\"}')"
+    ]
+  }
+}

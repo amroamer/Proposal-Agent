@@ -1,0 +1,132 @@
+# Proposal Agent – Development Docker Compose
+# Usage: docker compose up -d
+# App URL: http://localhost/ProposalAgent
+
+services:
+
+  nginx:
+    build: ./nginx
+    container_name: pa_nginx
+    ports:
+      - "8090:80"  # remapped from 80 due to host conflict
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - frontend_dist:/usr/share/nginx/html:ro
+    depends_on:
+      - backend
+      - frontend_build
+    restart: unless-stopped
+    networks: [pa_net]
+
+  # One-shot container that builds the frontend static assets into the shared volume.
+  frontend_build:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: pa_frontend_build
+    volumes:
+      - frontend_dist:/app/dist
+    networks: [pa_net]
+
+  backend:
+    build: ./backend
+    container_name: pa_backend
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      - REDIS_URL=redis://redis:6379/0
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - ENVIRONMENT=development
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      migrations:
+        condition: service_completed_successfully
+    ports:
+      - "8001:8000"  # exposed for direct API testing in dev (remapped from 8000 due to host conflict)
+    restart: unless-stopped
+    networks: [pa_net]
+
+  # worker disabled: app.worker module not implemented yet
+  # worker:
+  #   build: ./backend
+  #   container_name: pa_worker
+  #   command: celery -A app.worker.celery_app worker --loglevel=info --concurrency=2
+  #   env_file: .env
+  #   environment:
+  #     - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+  #     - REDIS_URL=redis://redis:6379/0
+  #     - OLLAMA_BASE_URL=http://host.docker.internal:11434
+  #   extra_hosts:
+  #     - "host.docker.internal:host-gateway"
+  #   depends_on:
+  #     - backend
+  #     - redis
+  #   restart: unless-stopped
+  #   networks: [pa_net]
+
+  migrations:
+    build: ./backend
+    container_name: pa_migrations
+    command: /app/scripts/run-migrations.sh
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    volumes:
+      - ./db/migrations:/app/db/migrations:ro
+      - ./scripts:/app/scripts:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [pa_net]
+
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: pa_db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pa_pgdata:/var/lib/postgresql/data
+    ports:
+      - "5435:5432"  # remapped from 5432 due to host conflict
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks: [pa_net]
+
+  redis:
+    image: redis:7-alpine
+    container_name: pa_redis
+    volumes:
+      - pa_redis:/data
+    restart: unless-stopped
+    networks: [pa_net]
+
+  # ollama container disabled: using shared Ollama on host (reachable via host.docker.internal:11434)
+  # ollama:
+  #   build: ./ollama
+  #   container_name: pa_ollama
+  #   ports:
+  #     - "11435:11434"
+  #   volumes:
+  #     - pa_ollama:/root/.ollama
+  #   restart: unless-stopped
+  #   networks: [pa_net]
+
+volumes:
+  pa_pgdata:
+  pa_redis:
+  frontend_dist:
+
+networks:
+  pa_net:
+    driver: bridge
