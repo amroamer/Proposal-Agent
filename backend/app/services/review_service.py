@@ -270,11 +270,11 @@ async def run_review(
         model_to_use = ollama_service.DEFAULT_MODEL
         persisted_prompt = (review_prompt or "").strip()
 
-    # Apply user preferences: a saved per-user model overrides the system default
-    # ONLY when there's no explicit framework model. Per-user options ALWAYS apply.
+    # User's saved LLM preference wins. Framework's stored model is the fallback
+    # for users who haven't set a preference. Per-user options always apply.
     user_pref = await llm_pref_service.get(db, user=user)
     user_options = dict(user_pref.options) if user_pref else {}
-    if user_pref and user_pref.model and not framework_list:
+    if user_pref and user_pref.model:
         model_to_use = user_pref.model
 
     result = await ollama_service.generate(
@@ -467,11 +467,12 @@ async def run_review_streaming(
             seen.add(name)
             criteria_list.append(c)
 
-    # 3. Resolve model + user prefs
+    # 3. Resolve model + user prefs — user's saved LLM preference wins; the
+    # framework's stored model is the fallback when the user hasn't set one.
     model_to_use = (frameworks[0].model if frameworks else "") or ollama_service.DEFAULT_MODEL
     user_pref = await llm_pref_service.get(db, user=user)
     user_options = dict(user_pref.options) if user_pref else {}
-    if user_pref and user_pref.model and not frameworks:
+    if user_pref and user_pref.model:
         model_to_use = user_pref.model
 
     # 4. Emit start event

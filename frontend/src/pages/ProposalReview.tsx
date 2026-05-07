@@ -19,6 +19,7 @@ import {
   type Framework,
   type FrameworkSummary,
 } from "../api/frameworks";
+import { getMyLLMPreferences } from "../api/llmPrefs";
 import { extractApiError } from "../api/client";
 
 const ACCEPTED = [".pptx", ".docx", ".pdf"];
@@ -83,6 +84,9 @@ export function ProposalReviewPage() {
   const [streamDone, setStreamDone] = useState<StreamDoneEvent | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  // User's saved default model (for the header badge).
+  const [defaultModel, setDefaultModel] = useState<string | null>(null);
+
   // ---------- Load frameworks ----------
   useEffect(() => {
     listFrameworks()
@@ -93,6 +97,9 @@ export function ProposalReviewPage() {
         if (first) setSelectedIds(new Set([first.id]));
       })
       .catch(e => setError(extractApiError(e)));
+    getMyLLMPreferences()
+      .then(p => setDefaultModel(p.model))
+      .catch(() => {});
   }, []);
 
   // Lazy-load detail when framework gets selected so we can show criteria.
@@ -287,7 +294,15 @@ export function ProposalReviewPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl md:text-4xl font-bold text-kpmg-blue">Smart Document Audit.</h1>
+        <div className="flex items-center gap-3 flex-wrap">
+          <h1 className="text-3xl md:text-4xl font-bold text-kpmg-blue">Smart Document Audit.</h1>
+          <span
+            className="text-xs px-2 py-1 rounded bg-kpmg-gray-100 text-kpmg-gray-700 font-mono"
+            title="Default LLM applied to reviews and metadata extraction. Change it in Settings → LLM."
+          >
+            LLM: {defaultModel ?? "system default"}
+          </span>
+        </div>
         <p className="mt-1 text-sm text-kpmg-gray-500">
           Precision diagnostic engine for T1 consulting deliverables.
         </p>
@@ -298,30 +313,22 @@ export function ProposalReviewPage() {
         <div className="text-xs uppercase tracking-wider text-kpmg-gray-400 font-semibold mb-3">
           1. Select document class
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {DOC_CLASSES.map(c => {
+        <div className="grid grid-cols-1 gap-3">
+          {DOC_CLASSES.filter(c => c.enabled).map(c => {
             const active = docClass === c.value;
             return (
               <button
                 key={c.value}
                 type="button"
-                onClick={() => c.enabled && setDocClass(c.value)}
-                disabled={!c.enabled}
+                onClick={() => setDocClass(c.value)}
                 className={[
                   "py-3 px-4 rounded-md font-bold uppercase tracking-wider text-sm transition-colors",
                   active
                     ? "bg-kpmg-blue text-white"
-                    : c.enabled
-                      ? "bg-kpmg-gray-50 text-kpmg-gray-700 hover:bg-kpmg-gray-100 ring-1 ring-kpmg-gray-200"
-                      : "bg-kpmg-gray-50 text-kpmg-gray-300 cursor-not-allowed ring-1 ring-kpmg-gray-100",
+                    : "bg-kpmg-gray-50 text-kpmg-gray-700 hover:bg-kpmg-gray-100 ring-1 ring-kpmg-gray-200",
                 ].join(" ")}
               >
                 {c.label}
-                {!c.enabled && (
-                  <span className="block text-[10px] font-normal mt-0.5 normal-case">
-                    coming soon
-                  </span>
-                )}
               </button>
             );
           })}
