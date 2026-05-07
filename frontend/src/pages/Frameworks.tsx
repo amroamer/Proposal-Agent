@@ -212,11 +212,12 @@ export function FrameworksPage() {
     <div className="space-y-6">
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-kpmg-blue">
+          <div className="eyebrow mb-2">Configure</div>
+          <h1 className="text-3xl md:text-[32px] font-semibold text-pa-ink tracking-[-0.6px] leading-tight">
             Framework Management
           </h1>
-          <p className="mt-1 text-sm text-kpmg-gray-500">
-            Configure diagnostic logic and strategic prompts.
+          <p className="mt-2 text-sm text-pa-muted max-w-[540px] leading-relaxed">
+            Diagnostic logic and strategic prompts that the agent uses to evaluate every proposal.
           </p>
         </div>
         <div className="flex gap-2">
@@ -224,7 +225,7 @@ export function FrameworksPage() {
             onClick={() => importJsonRef.current?.click()}
             className="btn-secondary text-sm"
           >
-            <FileUp className="h-4 w-4 mr-1.5" />
+            <FileUp className="h-4 w-4" />
             Import JSON
           </button>
           <input
@@ -238,7 +239,7 @@ export function FrameworksPage() {
             }}
           />
           <button onClick={onCreate} className="btn-primary">
-            <Plus className="h-4 w-4 mr-2" />
+            <Plus className="h-4 w-4" />
             New framework
           </button>
         </div>
@@ -255,12 +256,12 @@ export function FrameworksPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-6">
         {/* Library */}
-        <aside className="space-y-2">
-          <div className="text-xs uppercase tracking-wider text-kpmg-gray-400 font-semibold px-1">
-            Library
+        <aside className="space-y-2.5">
+          <div className="eyebrow-muted px-1">
+            Library · {String(list.length).padStart(2, "0")}
           </div>
           {list.length === 0 ? (
-            <div className="card text-sm text-kpmg-gray-500">
+            <div className="rounded-2xl bg-white border border-pa-line p-5 text-sm text-pa-muted">
               No frameworks yet. Click &quot;New framework&quot; to create one.
             </div>
           ) : (
@@ -271,19 +272,22 @@ export function FrameworksPage() {
                   if (dirty && !confirm("Discard unsaved changes?")) return;
                   setSelectedId(fw.id);
                 }}
-                className={`w-full text-left rounded-lg border-2 p-4 transition-colors ${
+                className={`relative w-full text-left rounded-2xl border p-4 transition-colors ${
                   selectedId === fw.id
-                    ? "border-kpmg-blue bg-kpmg-blue/5"
-                    : "border-kpmg-gray-100 bg-white hover:border-kpmg-gray-200"
+                    ? "border-pa-accent/30 bg-pa-accent-soft"
+                    : "border-pa-line bg-white hover:border-pa-accent/30"
                 }`}
               >
+                {selectedId === fw.id && (
+                  <span className="absolute top-3.5 right-3.5 h-2 w-2 rounded-full bg-pa-accent" />
+                )}
                 <div
-                  className={`font-bold ${selectedId === fw.id ? "text-kpmg-blue" : "text-kpmg-gray-800"}`}
+                  className={`text-[14.5px] font-semibold tracking-[-0.1px] ${selectedId === fw.id ? "text-pa-accent" : "text-pa-ink"}`}
                 >
                   {fw.name}
                 </div>
-                <div className="text-xs text-kpmg-gray-500 mt-1 uppercase tracking-wider">
-                  {fw.criteria_count} criteria{fw.is_public && " \u00b7 Public"}
+                <div className="text-[12px] text-pa-muted mt-1">
+                  {fw.criteria_count} criteria{fw.is_public && " \u00b7 public"}
                 </div>
               </button>
             ))

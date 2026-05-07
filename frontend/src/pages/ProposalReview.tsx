@@ -294,25 +294,26 @@ export function ProposalReviewPage() {
   return (
     <div className="space-y-6">
       <div>
+        <div className="eyebrow mb-2">Diagnose</div>
         <div className="flex items-center gap-3 flex-wrap">
-          <h1 className="text-3xl md:text-4xl font-bold text-kpmg-blue">Smart Document Audit.</h1>
+          <h1 className="text-3xl md:text-[32px] font-semibold text-pa-ink tracking-[-0.6px] leading-tight">
+            Smart Document Audit
+          </h1>
           <span
-            className="text-xs px-2 py-1 rounded bg-kpmg-gray-100 text-kpmg-gray-700 font-mono"
+            className="text-[11px] px-2.5 py-1 rounded-md bg-pa-accent-soft text-pa-accent font-mono font-semibold"
             title="Default LLM applied to reviews and metadata extraction. Change it in Settings → LLM."
           >
-            LLM: {defaultModel ?? "system default"}
+            LLM · {defaultModel ?? "system default"}
           </span>
         </div>
-        <p className="mt-1 text-sm text-kpmg-gray-500">
+        <p className="mt-2 text-sm text-pa-muted max-w-[540px] leading-relaxed">
           Precision diagnostic engine for T1 consulting deliverables.
         </p>
       </div>
 
       {/* Step 1: Document class */}
-      <div className="card">
-        <div className="text-xs uppercase tracking-wider text-kpmg-gray-400 font-semibold mb-3">
-          1. Select document class
-        </div>
+      <div className="rounded-2xl bg-pa-cream-soft border border-pa-line p-6">
+        <div className="eyebrow-muted mb-3">1 · Select document class</div>
         <div className="grid grid-cols-1 gap-3">
           {DOC_CLASSES.filter(c => c.enabled).map(c => {
             const active = docClass === c.value;
@@ -322,10 +323,10 @@ export function ProposalReviewPage() {
                 type="button"
                 onClick={() => setDocClass(c.value)}
                 className={[
-                  "py-3 px-4 rounded-md font-bold uppercase tracking-wider text-sm transition-colors",
+                  "py-3 px-4 rounded-lg font-semibold uppercase tracking-wider text-sm transition-colors",
                   active
-                    ? "bg-kpmg-blue text-white"
-                    : "bg-kpmg-gray-50 text-kpmg-gray-700 hover:bg-kpmg-gray-100 ring-1 ring-kpmg-gray-200",
+                    ? "bg-pa-accent text-white shadow-accent-soft"
+                    : "bg-white text-pa-body hover:bg-pa-accent-soft hover:text-pa-accent ring-1 ring-pa-line",
                 ].join(" ")}
               >
                 {c.label}

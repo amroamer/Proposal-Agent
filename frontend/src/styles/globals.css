@@ -1,46 +1,78 @@
+/* Soft Modern type system: Geist (display + mono). Loaded once here so
+   every page picks up the cream/indigo aesthetic without per-page imports. */
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* CSS variables for KPMG palette (consumed by non-Tailwind elements) */
+/* CSS variables for the Soft Modern palette (consumed by non-Tailwind
+   elements, e.g. inline styles or third-party widgets). Names kept under
+   --kpmg-* for backwards compatibility with existing references. */
 :root {
-  --kpmg-blue: #00338D;
-  --kpmg-lightblue: #0091DA;
-  --kpmg-purple: #470A68;
-  --kpmg-teal: #00A3A1;
-  --kpmg-gray-600: #4D4D4F;
-  --kpmg-gray-100: #EEEEEE;
+  --kpmg-blue:       #5b4cd9;
+  --kpmg-lightblue:  #7d6ff0;
+  --kpmg-purple:     #1e1b3a;
+  --kpmg-teal:       #2f9e6e;
+  --kpmg-gray-600:   #52507a;
+  --kpmg-gray-100:   #f1edf6;
+  --pa-cream:        #f7f4ee;
+  --pa-cream-soft:   #faf8f3;
+  --pa-line:         #e8e4f0;
+  --pa-ink:          #1e1b3a;
+  --pa-body:         #52507a;
+  --pa-accent:       #5b4cd9;
+  --pa-accent-2:     #7d6ff0;
+}
+
+html, body {
+  background: var(--pa-cream);
+  color: var(--pa-ink);
+}
+
+body {
+  font-family: 'Geist', 'Inter', system-ui, sans-serif;
+  font-feature-settings: 'cv11', 'ss01';
 }
 
 /* Arabic RTL adjustments */
 html[dir="rtl"] body { font-family: var(--font-arabic, "IBM Plex Sans Arabic", Arial, sans-serif); }
 
-/* Reusable component patterns */
+/* Reusable component patterns — Soft Modern look. */
 @layer components {
   .btn-primary {
-    @apply inline-flex items-center justify-center rounded-md bg-kpmg-blue px-4 py-2
-           text-sm font-semibold text-white shadow-sm hover:bg-kpmg-purple
-           focus:outline-none focus:ring-2 focus:ring-kpmg-lightblue focus:ring-offset-2
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-pa-accent px-5 py-2.5
+           text-sm font-semibold text-white shadow-accent
+           hover:bg-pa-accent-2
+           focus:outline-none focus:ring-2 focus:ring-pa-accent-2 focus:ring-offset-2
            disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
   }
   .btn-secondary {
-    @apply inline-flex items-center justify-center rounded-md bg-white px-4 py-2
-           text-sm font-semibold text-kpmg-gray-700 shadow-sm ring-1 ring-inset ring-kpmg-gray-200
-           hover:bg-kpmg-gray-50 focus:outline-none focus:ring-2 focus:ring-kpmg-lightblue
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-white px-5 py-2.5
+           text-sm font-semibold text-pa-body ring-1 ring-pa-line
+           hover:bg-pa-cream-soft hover:text-pa-ink
+           focus:outline-none focus:ring-2 focus:ring-pa-accent-2
            disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
   }
   .btn-danger {
-    @apply inline-flex items-center justify-center rounded-md bg-kpmg-error px-4 py-2
-           text-sm font-semibold text-white shadow-sm hover:brightness-90
-           focus:outline-none focus:ring-2 focus:ring-kpmg-error focus:ring-offset-2
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-pa-danger px-5 py-2.5
+           text-sm font-semibold text-white shadow-card hover:brightness-95
+           focus:outline-none focus:ring-2 focus:ring-pa-danger focus:ring-offset-2
            disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
   }
   .input-field {
-    @apply block w-full rounded-md border-0 px-3 py-2 text-kpmg-gray-800
-           shadow-sm ring-1 ring-inset ring-kpmg-gray-200 placeholder:text-kpmg-gray-400
-           focus:ring-2 focus:ring-inset focus:ring-kpmg-blue text-sm;
+    @apply block w-full rounded-lg border-0 px-3.5 py-2.5 text-pa-ink bg-white
+           ring-1 ring-pa-line placeholder:text-pa-muted
+           focus:ring-2 focus:ring-inset focus:ring-pa-accent text-sm;
   }
   .card {
-    @apply bg-white rounded-lg shadow-card p-6;
+    @apply bg-white rounded-2xl shadow-card border border-pa-line p-6;
+  }
+  /* Small uppercase eyebrow tag used above page titles. */
+  .eyebrow {
+    @apply text-[11.5px] font-semibold text-pa-accent uppercase tracking-[0.08em];
+  }
+  .eyebrow-muted {
+    @apply text-[11.5px] font-semibold text-pa-muted uppercase tracking-[0.08em];
   }
 }
