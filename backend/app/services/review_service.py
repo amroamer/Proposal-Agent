@@ -306,21 +306,121 @@ async def run_review(
 # -------- AI-driven metadata extraction --------
 
 METADATA_SYSTEM = (
-    "You are an information-extraction assistant. You read consulting proposals "
-    "and pull a small set of metadata fields. You return STRICT JSON only — no "
-    "commentary, no markdown fences, no extra keys."
+    "You extract structured metadata from consulting proposals. "
+    "Output ONE JSON object with exactly these five string keys, in order: "
+    'document_title, client_name, submission_date, purpose_and_scope, '
+    "client_mandatory_requirements. "
+    "No commentary, no markdown fences, no extra keys, no chat structure."
+)
+
+# A few-shot example anchors small models on the output schema; without it,
+# 8B models on long inputs sometimes echo their own system prompt or get
+# stuck in token loops. Keep the example tiny and visibly fake-but-shaped
+# correctly so the model copies the shape, not the content.
+_METADATA_EXAMPLE = (
+    '{"document_title":"AI Strategy Roadmap",'
+    '"client_name":"Ministry of Example",'
+    '"submission_date":"2025-01-15",'
+    '"purpose_and_scope":"24-week engagement to define an AI strategy.",'
+    '"client_mandatory_requirements":"- Vision statement\\n- 3-year roadmap"}'
 )
 
 METADATA_USER_TMPL = (
-    "Extract the following metadata from the document below. Return a single "
-    "JSON object with exactly these string keys: \"document_title\", "
-    "\"client_name\", \"submission_date\" (ISO YYYY-MM-DD if you can find one, "
-    "else empty), \"purpose_and_scope\" (1–3 sentence summary), and "
-    "\"client_mandatory_requirements\" (concise bulleted list of must-have "
-    "requirements as a single string with newlines between bullets). Use empty "
-    "strings for any field you cannot find. Do NOT invent values.\n\n"
-    "Document:\n```\n{doc_text}\n```"
+    "Extract metadata from the document below. Fields:\n"
+    "- document_title: title of the proposal (usually on slide 1).\n"
+    "- client_name: the target client (e.g. \"Ministry of Interior\").\n"
+    "- submission_date: ISO YYYY-MM-DD if visible, else empty string.\n"
+    "- purpose_and_scope: 1–2 sentence summary of the engagement.\n"
+    "- client_mandatory_requirements: bulleted requirements as a single "
+    "string with newlines between bullets.\n\n"
+    "Use empty strings for fields you cannot find. Never invent values.\n\n"
+    "Example output (illustrative shape only — do not copy values):\n"
+    f"{_METADATA_EXAMPLE}\n\n"
+    "Document:\n```\n{doc_text}\n```\n\n"
+    "Now output ONLY the JSON object for the document above."
 )
+
+
+# How many characters of doc_text to send to the LLM for metadata extraction.
+# Metadata (title, client, date, scope) sits in the first 1–3 slides of any
+# real proposal. A larger window hurts: 8B models drift, lose the JSON
+# instruction, and sometimes echo their system prompt as token-loop garbage.
+METADATA_DOC_CHARS = 5000
+
+
+def _slice_for_metadata(doc_text: str) -> str:
+    """Return the first ~5K chars, snapped to a slide/page boundary if possible."""
+    if len(doc_text) <= METADATA_DOC_CHARS:
+        return doc_text
+    cutoff = doc_text.rfind("\n## ", 0, METADATA_DOC_CHARS)
+    if cutoff < 1000:  # too aggressive — keep at least 1K of context
+        cutoff = METADATA_DOC_CHARS
+    return doc_text[:cutoff]
+
+
+_CLIENT_NAME_PATTERNS = (
+    r"\bMinistry of [A-Z][A-Za-z &'-]+(?:, [A-Z][A-Za-z &'-]+)?",
+    r"\bAuthority of [A-Z][A-Za-z &'-]+",
+    r"\bDepartment of [A-Z][A-Za-z &'-]+",
+    r"\bSaudi [A-Z][A-Za-z]+ (?:Authority|Commission|Center|Agency)",
+    r"\b[A-Z][A-Za-z]+ (?:Authority|Commission|Council|Agency|Bank|Holding|Group)",
+)
+
+
+def _regex_metadata_baseline(doc_text: str, filename: str) -> dict:
+    """Best-effort field extraction directly from doc_text — no LLM.
+
+    Used as a baseline that always produces something useful (at minimum the
+    filename as title), which is then *enriched* by the LLM. If the LLM
+    fails completely, the baseline is what the user sees.
+    """
+    head = doc_text[:3000]  # first slide / cover page
+
+    # Title: first non-empty line after "## Slide 1" / "## Page 1"; fallback
+    # to the filename stem.
+    title = ""
+    m = re.search(r"##\s+(?:Slide|Page)\s+1\s*\n+(.+?)(?:\n|$)", doc_text)
+    if m:
+        title = m.group(1).strip()
+    if not title:
+        from pathlib import Path
+        title = Path(filename or "").stem.replace("_", " ").strip()
+
+    # Client: pattern-match common naming conventions on the cover slide.
+    client = ""
+    for pat in _CLIENT_NAME_PATTERNS:
+        m = re.search(pat, head)
+        if m:
+            client = m.group(0).strip().rstrip(",.;:")
+            break
+
+    # Date: prefer ISO; fall back to "Month YYYY".
+    date = ""
+    m = re.search(r"\b(20\d{2})[-/](\d{1,2})[-/](\d{1,2})\b", head)
+    if m:
+        try:
+            yyyy, mm, dd = m.group(1), int(m.group(2)), int(m.group(3))
+            if 1 <= mm <= 12 and 1 <= dd <= 31:
+                date = f"{yyyy}-{mm:02d}-{dd:02d}"
+        except ValueError:
+            pass
+
+    return {
+        "document_title": title,
+        "client_name": client,
+        "submission_date": date,
+        "purpose_and_scope": "",
+        "client_mandatory_requirements": "",
+    }
+
+
+def _merge_metadata(ai: dict, baseline: dict) -> dict:
+    """Prefer a non-empty AI value; fall back to the baseline per field."""
+    out = {}
+    for k in baseline:
+        v_ai = (ai.get(k) or "").strip() if isinstance(ai.get(k), str) else _safe_str(ai.get(k))
+        out[k] = v_ai or baseline.get(k, "")
+    return out
 
 
 def _safe_str(v) -> str:
@@ -421,13 +521,22 @@ async def extract_metadata(
 ) -> dict:
     """Parse file → ask LLM for structured metadata → return normalised dict.
 
+    Strategy: always compute a regex-based baseline from the document text
+    (title from slide 1, client from cover-page patterns, ISO date if any).
+    Then ask the LLM to enrich those fields. Whatever the model returns, we
+    merge field-by-field — non-empty AI values win, baseline fills the gaps.
+    If the LLM fails entirely (token loop, transport error, garbage JSON),
+    the user still sees a usable starting set instead of an empty form.
+
     If `db` and `user` are provided, the user's preferred model + options
-    are applied. Otherwise the system defaults are used.
+    are applied; otherwise system defaults are used.
     """
     doc_text, _ = file_parser_service.extract_text(filename, file_bytes)
-    if len(doc_text) > 30_000:
-        doc_text = doc_text[:30_000]
-    prompt = METADATA_USER_TMPL.format(doc_text=doc_text)
+
+    # Baseline always succeeds. Enrich with the LLM where we can.
+    baseline = _regex_metadata_baseline(doc_text, filename)
+    sliced = _slice_for_metadata(doc_text)
+    prompt = METADATA_USER_TMPL.format(doc_text=sliced)
 
     model = ollama_service.DEFAULT_MODEL
     options: dict = {}
@@ -438,28 +547,39 @@ async def extract_metadata(
                 model = pref.model
             options = dict(pref.options or {})
 
-    result = await ollama_service.generate(
-        prompt, system=METADATA_SYSTEM, model=model, options=options, format="json"
-    )
+    # Anti-loop options: deterministic output, capped length, repeat penalty.
+    # User-preference options still win — only fill in keys they didn't set.
+    options = {
+        "temperature": 0.0,
+        "num_predict": 800,
+        "repeat_penalty": 1.25,
+        **options,
+    }
+
     try:
-        return _parse_metadata_json(result.output)
-    except ValueError as e:
-        # The model is allowed to fail at this — small/local models sometimes
-        # echo their own system prompt or get stuck in a token loop on very
-        # large documents. Don't fail the whole upload; let the user fill the
-        # metadata fields manually.
-        logger.warning(
-            "extract_metadata: LLM produced unparseable JSON, returning empty "
-            "metadata (model=%s, doc_chars=%d): %s",
-            model, len(doc_text), e,
+        result = await ollama_service.generate(
+            prompt,
+            system=METADATA_SYSTEM,
+            model=model,
+            options=options,
+            format="json",
         )
-        return {
-            "document_title": "",
-            "client_name": "",
-            "submission_date": "",
-            "purpose_and_scope": "",
-            "client_mandatory_requirements": "",
-        }
+    except ollama_service.OllamaError:
+        # Re-raise so the API endpoint surfaces a 502 — this is a real
+        # operator-visible failure, not a metadata-quality issue.
+        raise
+
+    try:
+        ai = _parse_metadata_json(result.output)
+    except ValueError as e:
+        logger.warning(
+            "extract_metadata: LLM JSON unparseable, falling back to regex "
+            "baseline (model=%s, doc_chars=%d, sliced=%d): %s",
+            model, len(doc_text), len(sliced), e,
+        )
+        return baseline
+
+    return _merge_metadata(ai, baseline)
 
 
 async def list_for_user(
