@@ -35,6 +35,7 @@ class FrameworkCriterion(BaseModel):
 class FrameworkCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     persona_instruction: str = Field("", max_length=5000)
+    persona_instruction_ar: str = Field("", max_length=5000)
     model: str = Field("gemma4:latest", min_length=1, max_length=100)
     is_public: bool = False
     criteria: list[FrameworkCriterion] = Field(default_factory=list)
@@ -43,6 +44,7 @@ class FrameworkCreate(BaseModel):
 class FrameworkUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=200)
     persona_instruction: str | None = Field(None, max_length=5000)
+    persona_instruction_ar: str | None = Field(None, max_length=5000)
     model: str | None = Field(None, min_length=1, max_length=100)
     is_public: bool | None = None
     criteria: list[FrameworkCriterion] | None = None
@@ -53,6 +55,7 @@ class FrameworkResponse(BaseModel):
     owner_user_id: int | None
     name: str
     persona_instruction: str
+    persona_instruction_ar: str
     model: str
     is_public: bool
     criteria: list[FrameworkCriterion]

@@ -24,6 +24,7 @@ export interface Framework {
   owner_user_id: number | null;
   name: string;
   persona_instruction: string;
+  persona_instruction_ar: string;
   model: string;
   is_public: boolean;
   criteria: FrameworkCriterion[];
@@ -39,6 +40,7 @@ export interface FrameworkListResponse {
 export interface FrameworkCreateInput {
   name: string;
   persona_instruction: string;
+  persona_instruction_ar: string;
   model: string;
   is_public: boolean;
   criteria: FrameworkCriterion[];

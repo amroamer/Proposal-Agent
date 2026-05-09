@@ -150,9 +150,10 @@ async def export_framework(
 
     # Default: JSON
     payload = {
-        "schema_version": "2.0",
+        "schema_version": "2.1",
         "name": item.name,
         "persona_instruction": item.persona_instruction,
+        "persona_instruction_ar": item.persona_instruction_ar,
         "model": item.model,
         "is_public": item.is_public,
         "criteria": criteria,
@@ -181,11 +182,14 @@ def _export_xlsx(item, criteria: list[dict], safe_name: str):
     ws_meta["A1"].font = Font(bold=True)
     ws_meta["B1"].font = Font(bold=True)
     ws_meta.append(["Name", item.name])
-    ws_meta.append(["Persona Instruction", item.persona_instruction])
+    ws_meta.append(["Persona Instruction (EN)", item.persona_instruction])
+    ws_meta.append(["Persona Instruction (AR)", item.persona_instruction_ar])
     ws_meta.append(["Model", item.model])
     ws_meta.append(["Public", str(item.is_public)])
-    ws_meta.column_dimensions["A"].width = 25
+    ws_meta.column_dimensions["A"].width = 28
     ws_meta.column_dimensions["B"].width = 80
+    # RTL alignment for the Arabic persona row
+    ws_meta["B4"].alignment = Alignment(horizontal="right")
 
     # Sheet 2: Criteria
     ws_crit = wb.create_sheet("Criteria")
@@ -285,6 +289,7 @@ async def import_framework(
     req = FrameworkCreate(
         name=name.strip(),
         persona_instruction=data.get("persona_instruction", ""),
+        persona_instruction_ar=data.get("persona_instruction_ar", ""),
         model=data.get("model", "gemma4:latest"),
         is_public=False,  # Imported frameworks are always private initially
         criteria=criteria,

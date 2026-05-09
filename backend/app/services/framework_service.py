@@ -27,6 +27,7 @@ async def create(db: AsyncSession, *, user: User, req: FrameworkCreate) -> Revie
         owner_user_id=user.id,
         name=req.name.strip(),
         persona_instruction=req.persona_instruction or "",
+        persona_instruction_ar=req.persona_instruction_ar or "",
         model=req.model.strip() or "gemma4:latest",
         is_public=req.is_public,
         criteria=_criteria_to_db(req.criteria),
@@ -80,6 +81,8 @@ async def update(
         item.name = req.name.strip()
     if req.persona_instruction is not None:
         item.persona_instruction = req.persona_instruction
+    if req.persona_instruction_ar is not None:
+        item.persona_instruction_ar = req.persona_instruction_ar
     if req.model is not None:
         item.model = req.model.strip() or "gemma4:latest"
     if req.is_public is not None:

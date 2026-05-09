@@ -13,9 +13,10 @@ class ReviewFramework(Base):
 
     id:                  Mapped[int]        = mapped_column(primary_key=True)
     owner_user_id:       Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
-    name:                Mapped[str]        = mapped_column(String(200), nullable=False)
-    persona_instruction: Mapped[str]        = mapped_column(Text, nullable=False, default="")
-    model:               Mapped[str]        = mapped_column(String(100), nullable=False, default="gemma4:latest")
+    name:                   Mapped[str]        = mapped_column(String(200), nullable=False)
+    persona_instruction:    Mapped[str]        = mapped_column(Text, nullable=False, default="")
+    persona_instruction_ar: Mapped[str]        = mapped_column(Text, nullable=False, default="")
+    model:                  Mapped[str]        = mapped_column(String(100), nullable=False, default="gemma4:latest")
     is_public:           Mapped[bool]       = mapped_column(Boolean, nullable=False, default=False)
     criteria:            Mapped[list[dict]] = mapped_column(JSONB, nullable=False, default=list)
     created_at:          Mapped[datetime]   = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

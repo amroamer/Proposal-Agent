@@ -101,6 +101,7 @@ export function FrameworksPage() {
       const fw = await createFramework({
         name: "New Framework",
         persona_instruction: "",
+        persona_instruction_ar: "",
         model: "gemma4:latest",
         is_public: false,
         criteria: [],
@@ -126,6 +127,7 @@ export function FrameworksPage() {
       const updated = await updateFramework(draft.id, {
         name: draft.name,
         persona_instruction: draft.persona_instruction,
+        persona_instruction_ar: draft.persona_instruction_ar,
         model: draft.model,
         is_public: draft.is_public,
         criteria: draft.criteria.filter(
@@ -372,10 +374,10 @@ export function FrameworksPage() {
                 </div>
               </div>
 
-              {/* Persona */}
+              {/* Persona — English */}
               <div>
                 <label className="block text-xs uppercase tracking-wider text-kpmg-gray-400 font-semibold mb-2">
-                  Framework Persona Instruction
+                  Framework Persona Instruction (EN)
                 </label>
                 <textarea
                   rows={3}
@@ -386,6 +388,25 @@ export function FrameworksPage() {
                   }
                   disabled={!canEdit}
                   placeholder="You are a top-tier management consultant..."
+                />
+              </div>
+
+              {/* Persona — Arabic */}
+              <div>
+                <label className="block text-xs uppercase tracking-wider text-kpmg-gray-400 font-semibold mb-2">
+                  Framework Persona Instruction (AR)
+                </label>
+                <textarea
+                  dir="rtl"
+                  rows={3}
+                  lang="ar"
+                  className="input-field font-arabic text-sm text-right"
+                  value={draft.persona_instruction_ar}
+                  onChange={(e) =>
+                    onChange("persona_instruction_ar", e.target.value)
+                  }
+                  disabled={!canEdit}
+                  placeholder="أنت مستشار إدارة من الطراز الأول..."
                 />
               </div>
 
