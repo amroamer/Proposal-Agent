@@ -5,13 +5,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { api, extractApiError } from "../api/client";
 
-// Mirrors the backend password policy (backend/app/core/security.py)
-const passwordSchema = z.string()
-  .min(12, "At least 12 characters.")
-  .refine(v => /[A-Z]/.test(v), "Must contain an uppercase letter.")
-  .refine(v => /[a-z]/.test(v), "Must contain a lowercase letter.")
-  .refine(v => /\d/.test(v),    "Must contain a digit.")
-  .refine(v => /[^A-Za-z0-9]/.test(v), "Must contain a symbol.");
+// Mirrors the backend password policy (backend/app/core/security.py).
+// Length-only: any 8+ characters accepted.
+const passwordSchema = z.string().min(8, "At least 8 characters.");
 
 const schema = z.object({
   full_name: z.string().min(1, "Full name is required.").max(200),
@@ -90,7 +86,7 @@ export function SignUpPage() {
           <input id="password" type="password" autoComplete="new-password" className="input-field" {...register("password")} />
           {errors.password && <p className="mt-1 text-xs text-kpmg-error">{errors.password.message}</p>}
           <p className="mt-1 text-xs text-kpmg-gray-500">
-            At least 12 characters with upper, lower, digit, and symbol.
+            At least 8 characters.
           </p>
         </div>
 

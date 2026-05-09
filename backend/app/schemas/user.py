@@ -8,7 +8,7 @@ from app.core.security import validate_password_policy
 class UserCreate(BaseModel):
     email: EmailStr
     full_name: str = Field(..., min_length=1, max_length=200)
-    password: str = Field(..., min_length=12, max_length=128)
+    password: str = Field(..., min_length=8, max_length=128)
     is_active: bool = True
     is_superadmin: bool = False
 
@@ -29,7 +29,7 @@ class UserUpdate(BaseModel):
 
 class PasswordChangeRequest(BaseModel):
     current_password: str = Field(..., min_length=1, max_length=128)
-    new_password: str = Field(..., min_length=12, max_length=128)
+    new_password: str = Field(..., min_length=8, max_length=128)
 
     @field_validator("new_password")
     @classmethod
@@ -41,7 +41,7 @@ class PasswordChangeRequest(BaseModel):
 
 
 class AdminPasswordResetRequest(BaseModel):
-    new_password: str = Field(..., min_length=12, max_length=128)
+    new_password: str = Field(..., min_length=8, max_length=128)
 
     @field_validator("new_password")
     @classmethod

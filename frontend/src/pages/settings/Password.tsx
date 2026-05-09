@@ -77,10 +77,10 @@ export function PasswordPage() {
             type="password"
             autoComplete="new-password"
             className="input-field"
-            {...register("new_password", { required: true, minLength: 12, maxLength: 128 })}
+            {...register("new_password", { required: true, minLength: 8, maxLength: 128 })}
           />
           <p className="mt-1.5 text-xs text-pa-muted">
-            Min 12 chars, must include upper, lower, digit, and symbol.
+            Min 8 characters.
           </p>
         </div>
         <div>

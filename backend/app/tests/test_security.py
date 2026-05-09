@@ -54,26 +54,20 @@ class TestJWT:
 
 
 # ---------- Password policy ----------
+# Length-only policy: any 8+ characters accepted.
 class TestPasswordPolicy:
-    def test_valid_password_no_errors(self):
+    def test_eight_chars_no_errors(self):
+        assert validate_password_policy("abcdefgh") == []
+
+    def test_complex_password_still_ok(self):
         assert validate_password_policy("ValidPass-123!") == []
 
     def test_too_short(self):
-        errs = validate_password_policy("Ab1!")
-        assert any("12 characters" in e for e in errs)
+        errs = validate_password_policy("abc1234")  # 7 chars
+        assert any("8 characters" in e for e in errs)
 
-    def test_missing_uppercase(self):
-        errs = validate_password_policy("nocapsstring-1!")
-        assert any("uppercase" in e for e in errs)
-
-    def test_missing_lowercase(self):
-        errs = validate_password_policy("ALLCAPSSTRING-1!")
-        assert any("lowercase" in e for e in errs)
-
-    def test_missing_digit(self):
-        errs = validate_password_policy("NoDigitsEver-!!")
-        assert any("digit" in e for e in errs)
-
-    def test_missing_symbol(self):
-        errs = validate_password_policy("NoSymbolsHere123")
-        assert any("symbol" in e for e in errs)
+    def test_simple_password_accepted(self):
+        # No more uppercase / lowercase / digit / symbol requirements.
+        assert validate_password_policy("aaaaaaaa") == []
+        assert validate_password_policy("12345678") == []
+        assert validate_password_policy("ALLCAPSS") == []

@@ -511,7 +511,7 @@ export function UsersListPage() {
             <input
               type="password"
               className="input-field mb-4"
-              placeholder="New password (min 12 chars, mixed case, digit, symbol)"
+              placeholder="New password (min 8 characters)"
               value={newPassword}
               onChange={e => setNewPassword(e.target.value)}
               autoFocus

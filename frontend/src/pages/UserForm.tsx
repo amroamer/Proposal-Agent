@@ -12,7 +12,7 @@ const createSchema = z.object({
   full_name: z.string().min(1, "Name is required.").max(200),
   password: z
     .string()
-    .min(12, "At least 12 characters.")
+    .min(8, "At least 8 characters.")
     .max(128),
   is_active: z.boolean(),
   is_superadmin: z.boolean(),
@@ -145,7 +145,7 @@ export function UserFormPage() {
               <p className="mt-1 text-xs text-kpmg-error">{errors.password.message}</p>
             )}
             <p className="mt-1 text-xs text-kpmg-gray-400">
-              Min 12 chars, must include upper, lower, digit, and symbol.
+              Min 8 characters.
             </p>
           </div>
         )}

@@ -8,7 +8,7 @@ from app.core.security import validate_password_policy
 class SignUpRequest(BaseModel):
     email: EmailStr
     full_name: str = Field(..., min_length=1, max_length=200)
-    password: str = Field(..., min_length=12, max_length=128)
+    password: str = Field(..., min_length=8, max_length=128)
     accept_terms: bool = Field(..., description="Must be true; PDPL acceptance")
 
     @field_validator("password")
@@ -49,7 +49,7 @@ class ForgotPasswordRequest(BaseModel):
 
 class ResetPasswordRequest(BaseModel):
     token: str
-    new_password: str = Field(..., min_length=12, max_length=128)
+    new_password: str = Field(..., min_length=8, max_length=128)
 
     @field_validator("new_password")
     @classmethod

@@ -70,7 +70,9 @@ def decode_token(token: str) -> TokenPayload:
 
 
 # ---------- Password policy ----------
-PASSWORD_POLICY_MIN = 12
+# Length-only policy: any 8+ characters accepted. Character-class rules
+# (mixed case, digit, symbol) were dropped at the user's request.
+PASSWORD_POLICY_MIN = 8
 
 
 def validate_password_policy(password: str) -> list[str]:
@@ -78,12 +80,4 @@ def validate_password_policy(password: str) -> list[str]:
     errors: list[str] = []
     if len(password) < PASSWORD_POLICY_MIN:
         errors.append(f"Password must be at least {PASSWORD_POLICY_MIN} characters.")
-    if not any(c.isupper() for c in password):
-        errors.append("Password must contain at least one uppercase letter.")
-    if not any(c.islower() for c in password):
-        errors.append("Password must contain at least one lowercase letter.")
-    if not any(c.isdigit() for c in password):
-        errors.append("Password must contain at least one digit.")
-    if not any(not c.isalnum() for c in password):
-        errors.append("Password must contain at least one symbol.")
     return errors

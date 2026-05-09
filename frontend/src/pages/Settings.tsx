@@ -157,10 +157,10 @@ export function SettingsPage() {
               type="password"
               className="input-field"
               autoComplete="new-password"
-              {...pwd.register("new_password", { required: true, minLength: 12, maxLength: 128 })}
+              {...pwd.register("new_password", { required: true, minLength: 8, maxLength: 128 })}
             />
             <p className="mt-1 text-xs text-kpmg-gray-400">
-              Min 12 chars, must include upper, lower, digit, and symbol.
+              Min 8 characters.
             </p>
           </div>
           <div>
