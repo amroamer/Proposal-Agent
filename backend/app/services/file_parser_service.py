@@ -6,7 +6,10 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 SUPPORTED_KINDS = ("pptx", "docx", "pdf")
-MAX_BYTES = 50 * 1024 * 1024  # 50 MB hard cap regardless of nginx limit
+# Backend-side hard cap. Keep this <= the smaller of pa_nginx.client_max_body_size
+# (256M) and the outer kpmg-infra nginx client_max_body_size — otherwise the
+# proxy 413s before the request ever reaches us.
+MAX_BYTES = 256 * 1024 * 1024  # 256 MB
 
 
 class UnsupportedFile(ValueError):
