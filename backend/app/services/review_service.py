@@ -441,7 +441,25 @@ async def extract_metadata(
     result = await ollama_service.generate(
         prompt, system=METADATA_SYSTEM, model=model, options=options, format="json"
     )
-    return _parse_metadata_json(result.output)
+    try:
+        return _parse_metadata_json(result.output)
+    except ValueError as e:
+        # The model is allowed to fail at this — small/local models sometimes
+        # echo their own system prompt or get stuck in a token loop on very
+        # large documents. Don't fail the whole upload; let the user fill the
+        # metadata fields manually.
+        logger.warning(
+            "extract_metadata: LLM produced unparseable JSON, returning empty "
+            "metadata (model=%s, doc_chars=%d): %s",
+            model, len(doc_text), e,
+        )
+        return {
+            "document_title": "",
+            "client_name": "",
+            "submission_date": "",
+            "purpose_and_scope": "",
+            "client_mandatory_requirements": "",
+        }
 
 
 async def list_for_user(
