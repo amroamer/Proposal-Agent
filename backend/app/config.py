@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     # CORS
     FRONTEND_ORIGIN: str = "http://localhost"
 
+    # First-admin bootstrap (read by app.core.bootstrap on startup).
+    # If a superadmin already exists in the DB, these are ignored.
+    FIRST_ADMIN_EMAIL: str = ""
+    FIRST_ADMIN_PASSWORD: str = ""
+
     @property
     def is_production(self) -> bool:
         return self.ENVIRONMENT.lower() == "production"

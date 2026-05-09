@@ -8,6 +8,7 @@ from fastapi.responses import ORJSONResponse
 
 from app.config import get_settings
 from app.api.v1 import api_router as api_v1_router
+from app.core.bootstrap import bootstrap_first_admin
 from app.core.exceptions import register_exception_handlers
 
 logger = logging.getLogger(__name__)
@@ -17,6 +18,7 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting %s (%s)", settings.APP_NAME, settings.ENVIRONMENT)
+    await bootstrap_first_admin()
     yield
     logger.info("Shutting down %s", settings.APP_NAME)
 
