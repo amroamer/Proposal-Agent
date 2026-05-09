@@ -30,6 +30,9 @@ export interface ReviewSummary {
   document_class: DocumentClass;
   framework_ids: number[];
   extracted_metadata: ReviewMetadata;
+  /** Average of per-criterion scores parsed from the review output (0-10).
+   *  null when no `Score: X/10` lines could be parsed. */
+  aggregate_score: number | null;
   created_at: string;
 }
 

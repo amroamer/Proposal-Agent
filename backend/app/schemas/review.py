@@ -27,6 +27,11 @@ class ReviewSummary(BaseModel):
     document_class: DocumentClass = "proposal"
     framework_ids: list[int] = Field(default_factory=list)
     extracted_metadata: ReviewMetadata = Field(default_factory=ReviewMetadata)
+    aggregate_score: float | None = Field(
+        default=None,
+        description="Average of per-criterion scores parsed from the review_output, on a 0-10 scale. "
+                    "None if no scores could be parsed (e.g. legacy free-form reviews).",
+    )
     created_at: datetime
 
     class Config:

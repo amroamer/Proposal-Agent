@@ -9,6 +9,7 @@ import { DashboardPage } from "./pages/Dashboard";
 import { ProposalReviewPage } from "./pages/ProposalReview";
 import { ReviewsListPage } from "./pages/ReviewsList";
 import { ReviewDetailPage } from "./pages/ReviewDetail";
+import { ModuleDetailPage } from "./pages/ModuleDetail";
 import { FrameworksPage } from "./pages/Frameworks";
 
 import { KBListPage } from "./pages/KBList";
@@ -63,6 +64,7 @@ export function App() {
           <Route path="/proposals/review" element={<ProposalReviewPage />} />
           <Route path="/reviews" element={<ReviewsListPage />} />
           <Route path="/reviews/:id" element={<ReviewDetailPage />} />
+          <Route path="/reviews/:id/criteria/:criterionIdx" element={<ModuleDetailPage />} />
 
           {/* Review frameworks */}
           <Route path="/frameworks" element={<FrameworksPage />} />

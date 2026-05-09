@@ -35,26 +35,33 @@ export function PasswordPage() {
   };
 
   return (
-    <section className="space-y-4">
+    <section className="space-y-5">
       <div>
-        <h2 className="text-lg font-semibold text-kpmg-gray-800">Password</h2>
-        <p className="text-sm text-kpmg-gray-500 mt-1">Change the password used to sign in.</p>
+        <h2 className="text-[20px] font-bold text-pa-ink tracking-[-0.3px]">Password</h2>
+        <p className="text-sm text-pa-muted mt-1.5 max-w-[560px]">
+          Change the password used to sign in.
+        </p>
       </div>
 
       {error && (
-        <div role="alert" className="p-3 rounded bg-red-50 border border-red-200 text-sm text-kpmg-error">
+        <div role="alert" className="p-3 rounded-lg bg-pa-danger-soft border border-pa-danger/20 text-sm text-pa-danger">
           {error}
         </div>
       )}
       {msg && (
-        <div role="status" className="p-3 rounded bg-green-50 border border-green-200 text-sm text-green-800">
+        <div role="status" className="p-3 rounded-lg bg-pa-success-soft border border-pa-success/20 text-sm text-pa-success">
           {msg}
         </div>
       )}
 
-      <form onSubmit={handleSubmit(onSubmit)} className="card space-y-4">
+      <form
+        onSubmit={handleSubmit(onSubmit)}
+        className="rounded-2xl bg-white border border-pa-line p-5 md:p-6 space-y-4"
+      >
         <div>
-          <label className="block text-sm font-medium text-kpmg-gray-700 mb-1">Current password</label>
+          <label className="block text-[11px] font-bold uppercase tracking-[0.08em] text-pa-muted mb-1.5">
+            Current password
+          </label>
           <input
             type="password"
             autoComplete="current-password"
@@ -63,19 +70,23 @@ export function PasswordPage() {
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-kpmg-gray-700 mb-1">New password</label>
+          <label className="block text-[11px] font-bold uppercase tracking-[0.08em] text-pa-muted mb-1.5">
+            New password
+          </label>
           <input
             type="password"
             autoComplete="new-password"
             className="input-field"
             {...register("new_password", { required: true, minLength: 12, maxLength: 128 })}
           />
-          <p className="mt-1 text-xs text-kpmg-gray-400">
+          <p className="mt-1.5 text-xs text-pa-muted">
             Min 12 chars, must include upper, lower, digit, and symbol.
           </p>
         </div>
         <div>
-          <label className="block text-sm font-medium text-kpmg-gray-700 mb-1">Confirm new password</label>
+          <label className="block text-[11px] font-bold uppercase tracking-[0.08em] text-pa-muted mb-1.5">
+            Confirm new password
+          </label>
           <input
             type="password"
             autoComplete="new-password"
@@ -83,7 +94,7 @@ export function PasswordPage() {
             {...register("confirm_password", { required: true })}
           />
         </div>
-        <div className="flex justify-end">
+        <div className="flex justify-end pt-1">
           <button type="submit" className="btn-primary" disabled={isSubmitting}>
             {isSubmitting ? "Saving…" : "Change password"}
           </button>

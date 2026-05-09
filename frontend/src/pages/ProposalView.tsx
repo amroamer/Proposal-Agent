@@ -117,7 +117,7 @@ export function ProposalViewPage() {
                 {s.heading}
               </h2>
               {s.content.trim() ? (
-                <div className="prose prose-sm max-w-none prose-headings:text-kpmg-gray-800 prose-p:text-kpmg-gray-700 prose-strong:text-kpmg-gray-800 prose-li:text-kpmg-gray-700">
+                <div className="prose prose-sm max-w-none min-w-0 overflow-x-auto prose-headings:text-kpmg-gray-800 prose-p:text-kpmg-gray-700 prose-strong:text-kpmg-gray-800 prose-li:text-kpmg-gray-700">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{s.content}</ReactMarkdown>
                 </div>
               ) : (

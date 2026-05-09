@@ -2,45 +2,82 @@
 @tailwind components;
 @tailwind utilities;
 
-/* CSS variables for KPMG palette (consumed by non-Tailwind elements) */
+/* CSS variables for the KPMG palette (consumed by non-Tailwind elements,
+   inline styles, or third-party widgets). The semantic --pa-* aliases
+   are kept for components that use them. */
 :root {
-  --kpmg-blue: #00338D;
-  --kpmg-lightblue: #0091DA;
-  --kpmg-purple: #470A68;
-  --kpmg-teal: #00A3A1;
-  --kpmg-gray-600: #4D4D4F;
-  --kpmg-gray-100: #EEEEEE;
+  --kpmg-blue:        #00338D;
+  --kpmg-mediumblue:  #005EB8;
+  --kpmg-lightblue:   #0091DA;
+  --kpmg-violet:      #483698;
+  --kpmg-purple:      #470A68;
+  --kpmg-lightpurple: #6D2077;
+  --kpmg-green:       #00A3A1;
+  --kpmg-gray-100:    #EEEEEE;
+  --kpmg-gray-600:    #4D4D4F;
+  --pa-cream:         #F7F7F8;
+  --pa-cream-soft:    #FAFAFB;
+  --pa-line:          #EEEEEE;
+  --pa-ink:           #262626;
+  --pa-body:          #4D4D4F;
+  --pa-accent:        #00338D;
+  --pa-accent-2:      #005EB8;
+}
+
+html, body {
+  background: var(--pa-cream);
+  color: var(--pa-ink);
+}
+
+body {
+  font-family: 'Arial', 'Helvetica Neue', Helvetica, system-ui, sans-serif;
 }
 
 /* Arabic RTL adjustments */
 html[dir="rtl"] body { font-family: var(--font-arabic, "IBM Plex Sans Arabic", Arial, sans-serif); }
 
-/* Reusable component patterns */
+/* Reusable component patterns — KPMG brand. */
 @layer components {
   .btn-primary {
-    @apply inline-flex items-center justify-center rounded-md bg-kpmg-blue px-4 py-2
-           text-sm font-semibold text-white shadow-sm hover:bg-kpmg-purple
+    @apply inline-flex items-center justify-center gap-2 rounded-md bg-kpmg-blue px-5 py-2.5
+           text-sm font-bold text-white shadow-accent
+           hover:bg-kpmg-mediumblue
            focus:outline-none focus:ring-2 focus:ring-kpmg-lightblue focus:ring-offset-2
            disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
   }
   .btn-secondary {
-    @apply inline-flex items-center justify-center rounded-md bg-white px-4 py-2
-           text-sm font-semibold text-kpmg-gray-700 shadow-sm ring-1 ring-inset ring-kpmg-gray-200
-           hover:bg-kpmg-gray-50 focus:outline-none focus:ring-2 focus:ring-kpmg-lightblue
+    @apply inline-flex items-center justify-center gap-2 rounded-md bg-white px-5 py-2.5
+           text-sm font-bold text-pa-body ring-1 ring-pa-line
+           hover:bg-pa-cream hover:text-pa-ink
+           focus:outline-none focus:ring-2 focus:ring-kpmg-lightblue
            disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
   }
   .btn-danger {
-    @apply inline-flex items-center justify-center rounded-md bg-kpmg-error px-4 py-2
-           text-sm font-semibold text-white shadow-sm hover:brightness-90
+    @apply inline-flex items-center justify-center gap-2 rounded-md bg-kpmg-error px-5 py-2.5
+           text-sm font-bold text-white shadow-card hover:brightness-95
            focus:outline-none focus:ring-2 focus:ring-kpmg-error focus:ring-offset-2
            disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
   }
   .input-field {
-    @apply block w-full rounded-md border-0 px-3 py-2 text-kpmg-gray-800
-           shadow-sm ring-1 ring-inset ring-kpmg-gray-200 placeholder:text-kpmg-gray-400
+    @apply block w-full rounded-md border-0 px-3.5 py-2.5 text-pa-ink bg-white
+           ring-1 ring-pa-line placeholder:text-pa-muted
            focus:ring-2 focus:ring-inset focus:ring-kpmg-blue text-sm;
   }
   .card {
-    @apply bg-white rounded-lg shadow-card p-6;
+    @apply bg-white rounded-xl shadow-card border border-pa-line p-6;
+  }
+  /* Small uppercase eyebrow tag used above page titles. */
+  .eyebrow {
+    @apply text-[11.5px] font-bold text-kpmg-blue uppercase tracking-[0.08em];
+  }
+  .eyebrow-muted {
+    @apply text-[11.5px] font-bold text-pa-muted uppercase tracking-[0.08em];
+  }
+
+  /* KPMG word mark — bold blue 'KPMG' text used in the header. The PDF brand
+     guide shows the mark as bold sans-serif lettering with stacked rectangles
+     above each letter; for an internal app we render the wordmark only. */
+  .kpmg-mark {
+    @apply font-sans font-extrabold tracking-[-0.02em] leading-none italic;
   }
 }

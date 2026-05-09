@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Sparkles, AlertTriangle, Loader2, Upload, FileText, X, Settings, CheckCircle2, XCircle, StopCircle, ShieldAlert, ShieldCheck, BookmarkCheck } from "lucide-react";
+import { Sparkles, AlertTriangle, Loader2, Upload, FileText, Settings, CheckCircle2, XCircle, StopCircle, ShieldAlert, ShieldCheck, BookmarkCheck, Zap } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -19,6 +19,7 @@ import {
   type Framework,
   type FrameworkSummary,
 } from "../api/frameworks";
+import { getMyLLMPreferences } from "../api/llmPrefs";
 import { extractApiError } from "../api/client";
 
 const ACCEPTED = [".pptx", ".docx", ".pdf"];
@@ -83,6 +84,9 @@ export function ProposalReviewPage() {
   const [streamDone, setStreamDone] = useState<StreamDoneEvent | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  // User's saved default model (for the header badge).
+  const [defaultModel, setDefaultModel] = useState<string | null>(null);
+
   // ---------- Load frameworks ----------
   useEffect(() => {
     listFrameworks()
@@ -93,6 +97,9 @@ export function ProposalReviewPage() {
         if (first) setSelectedIds(new Set([first.id]));
       })
       .catch(e => setError(extractApiError(e)));
+    getMyLLMPreferences()
+      .then(p => setDefaultModel(p.model))
+      .catch(() => {});
   }, []);
 
   // Lazy-load detail when framework gets selected so we can show criteria.
@@ -266,6 +273,9 @@ export function ProposalReviewPage() {
               break;
             case "done":
               setStreamDone(event.data);
+              if (event.data.review_id) {
+                navigate(`/reviews/${event.data.review_id}`);
+              }
               break;
             case "error":
               setError(event.data.error);
@@ -286,301 +296,311 @@ export function ProposalReviewPage() {
 
   return (
     <div className="space-y-6">
+      {/* HERO */}
       <div>
-        <h1 className="text-3xl md:text-4xl font-bold text-kpmg-blue">Smart Document Audit.</h1>
-        <p className="mt-1 text-sm text-kpmg-gray-500">
-          Precision diagnostic engine for T1 consulting deliverables.
+        <div className="eyebrow mb-2">New audit</div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <h1 className="text-3xl md:text-[32px] font-bold text-pa-ink tracking-[-0.6px] leading-tight">
+            Smart Document Audit
+          </h1>
+          <span
+            className="text-[11px] px-2.5 py-1 rounded-md bg-pa-accent-soft text-kpmg-blue font-mono font-bold"
+            title="Default LLM applied to reviews and metadata extraction. Change it in Settings → LLM."
+          >
+            LLM · {defaultModel ?? "system default"}
+          </span>
+        </div>
+        <p className="mt-2 text-sm text-pa-muted max-w-[640px] leading-relaxed">
+          Drop a proposal and the agent will run a 13-criterion readiness diagnostic.
         </p>
       </div>
 
-      {/* Step 1: Document class */}
-      <div className="card">
-        <div className="text-xs uppercase tracking-wider text-kpmg-gray-400 font-semibold mb-3">
-          1. Select document class
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {DOC_CLASSES.map(c => {
-            const active = docClass === c.value;
-            return (
+      {/* DOC CLASS — three big chips. Disabled ones show "coming soon". */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {DOC_CLASSES.map(c => {
+          const active = docClass === c.value;
+          const enabled = c.enabled;
+          return (
+            <button
+              key={c.value}
+              type="button"
+              onClick={() => enabled && setDocClass(c.value)}
+              disabled={!enabled}
+              className={[
+                "py-5 px-4 rounded-xl font-bold uppercase tracking-[0.04em] text-sm transition-colors text-center",
+                active
+                  ? "bg-kpmg-blue text-white shadow-accent-soft"
+                  : enabled
+                    ? "bg-white text-pa-body ring-1 ring-pa-line hover:ring-kpmg-blue/40 hover:text-kpmg-blue"
+                    : "bg-white text-pa-muted ring-1 ring-pa-line cursor-not-allowed",
+              ].join(" ")}
+            >
+              <div>{c.label}</div>
+              {!enabled && (
+                <div className="text-[10px] font-medium normal-case tracking-normal text-pa-muted mt-1">
+                  coming soon
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* DROP ZONE */}
+      <div
+        onClick={() => !running && fileInputRef.current?.click()}
+        onDrop={onDrop}
+        onDragOver={e => {
+          e.preventDefault();
+          if (!running) setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        className={[
+          "rounded-2xl border-2 border-dashed transition-colors py-12 px-6 text-center cursor-pointer",
+          running ? "opacity-50 cursor-not-allowed" : "",
+          dragOver ? "border-kpmg-blue bg-pa-accent-soft" : file ? "border-kpmg-blue bg-white" : "border-pa-line bg-white hover:border-kpmg-blue/50",
+        ].join(" ")}
+      >
+        {file ? (
+          <div className="flex items-center justify-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-kpmg-blue text-white flex items-center justify-center shrink-0">
+              <FileText className="h-5 w-5" />
+            </div>
+            <div className="text-left min-w-0">
+              <div className="text-[14px] font-bold text-pa-ink font-mono truncate max-w-[420px]">
+                {file.name}
+              </div>
+              <div className="text-[12px] text-pa-muted mt-0.5">
+                {fmtBytes(file.size)} · ready to run
+              </div>
+            </div>
+            {!running && (
               <button
-                key={c.value}
                 type="button"
-                onClick={() => c.enabled && setDocClass(c.value)}
-                disabled={!c.enabled}
-                className={[
-                  "py-3 px-4 rounded-md font-bold uppercase tracking-wider text-sm transition-colors",
-                  active
-                    ? "bg-kpmg-blue text-white"
-                    : c.enabled
-                      ? "bg-kpmg-gray-50 text-kpmg-gray-700 hover:bg-kpmg-gray-100 ring-1 ring-kpmg-gray-200"
-                      : "bg-kpmg-gray-50 text-kpmg-gray-300 cursor-not-allowed ring-1 ring-kpmg-gray-100",
-                ].join(" ")}
+                onClick={clearFile}
+                className="ml-2 px-3 py-1.5 rounded-md text-[11.5px] font-bold text-pa-body border border-pa-line hover:bg-pa-cream"
+                aria-label="Remove file"
               >
-                {c.label}
-                {!c.enabled && (
-                  <span className="block text-[10px] font-normal mt-0.5 normal-case">
-                    coming soon
-                  </span>
-                )}
+                Replace
               </button>
-            );
-          })}
+            )}
+          </div>
+        ) : (
+          <>
+            <div className="w-14 h-14 rounded-2xl bg-pa-accent-soft text-kpmg-blue flex items-center justify-center mx-auto mb-4">
+              <Upload className="h-6 w-6" />
+            </div>
+            <div className="text-[18px] font-bold text-pa-ink tracking-[-0.3px]">
+              Attach proposal
+            </div>
+            <div className="text-[13px] text-pa-muted mt-1.5">
+              Drop a file or click to browse · {ACCEPTED.join(" · ")}
+            </div>
+          </>
+        )}
+      </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={ACCEPTED.join(",")}
+        className="hidden"
+        onChange={e => handleFile(e.target.files?.[0] ?? null)}
+      />
+
+      {/* DOCUMENT METADATA — cream-soft card with 2x2 grid */}
+      <div className="rounded-2xl bg-pa-cream-soft border border-pa-line p-5 md:p-6 relative">
+        <div className="flex items-center justify-between mb-4">
+          <div className="eyebrow-muted">Document metadata</div>
+          {!extractingMeta && metadata.document_title && (
+            <div className="flex items-center gap-1 text-[11.5px] font-semibold text-pa-success">
+              <CheckCircle2 className="h-3 w-3" />
+              Auto-filled
+            </div>
+          )}
+        </div>
+
+        {extractingMeta && <ExtractionProgress />}
+
+        <div className={extractingMeta ? "opacity-30 pointer-events-none mt-4" : ""}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <MetadataField
+              label="Document title"
+              value={metadata.document_title}
+              onChange={v => setMetadata({ ...metadata, document_title: v })}
+              extracting={extractingMeta}
+            />
+            <MetadataField
+              label="Client name"
+              placeholder="e.g. Ministry of Industry"
+              value={metadata.client_name}
+              onChange={v => setMetadata({ ...metadata, client_name: v })}
+              extracting={extractingMeta}
+            />
+            <div>
+              <FieldLabel>Submission date</FieldLabel>
+              <input
+                type="date"
+                className="input-field"
+                value={metadata.submission_date}
+                onChange={e => setMetadata({ ...metadata, submission_date: e.target.value })}
+                disabled={extractingMeta}
+              />
+            </div>
+            <MetadataField
+              label="Purpose & scope"
+              placeholder="One sentence"
+              value={metadata.purpose_and_scope}
+              onChange={v => setMetadata({ ...metadata, purpose_and_scope: v })}
+              extracting={extractingMeta}
+            />
+          </div>
+          <div className="mt-4">
+            <MetadataField
+              label="Client mandatory requirements"
+              value={metadata.client_mandatory_requirements}
+              onChange={v =>
+                setMetadata({ ...metadata, client_mandatory_requirements: v })
+              }
+              extracting={extractingMeta}
+              multiline
+              rows={4}
+            />
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6">
-        {/* Left column: upload + metadata */}
-        <div className="space-y-6">
-          {/* Step 2: Attach */}
-          <div
-            onClick={() => !running && fileInputRef.current?.click()}
-            onDrop={onDrop}
-            onDragOver={e => {
-              e.preventDefault();
-              if (!running) setDragOver(true);
-            }}
-            onDragLeave={() => setDragOver(false)}
-            className={[
-              "rounded-lg border-2 border-dashed p-10 cursor-pointer transition-colors text-center",
-              running ? "opacity-50 cursor-not-allowed" : "",
-              dragOver ? "border-kpmg-blue bg-kpmg-blue/5" : "border-kpmg-gray-200 bg-white hover:border-kpmg-blue/50",
-            ].join(" ")}
-          >
-            {file ? (
-              <div className="flex items-center justify-center gap-3">
-                <FileText className="h-8 w-8 text-kpmg-blue flex-shrink-0" />
-                <div className="text-left">
-                  <div className="font-medium text-kpmg-gray-800 truncate max-w-md">
-                    {file.name}
-                  </div>
-                  <div className="text-xs text-kpmg-gray-500">{fmtBytes(file.size)}</div>
-                </div>
-                {!running && (
-                  <button
-                    type="button"
-                    onClick={clearFile}
-                    className="p-2 rounded hover:bg-kpmg-gray-100"
-                    aria-label="Remove file"
-                  >
-                    <X className="h-4 w-4 text-kpmg-gray-500" />
-                  </button>
-                )}
-              </div>
-            ) : (
-              <>
-                <Upload className="h-10 w-10 text-kpmg-blue/40 mx-auto mb-3" />
-                <div className="text-2xl font-bold text-kpmg-blue">2. Attach document here</div>
-                <div className="text-xs text-kpmg-gray-400 mt-2">
-                  Drop a file or click to browse · {ACCEPTED.join(" · ")}
-                </div>
-              </>
-            )}
-          </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept={ACCEPTED.join(",")}
-            className="hidden"
-            onChange={e => handleFile(e.target.files?.[0] ?? null)}
-          />
-
-          {/* Auto-extracted metadata */}
-          <div className="card space-y-4 relative">
-            <div className="flex items-center justify-between">
-              <div className="text-xs uppercase tracking-wider text-kpmg-gray-400 font-semibold">
-                Document metadata
-              </div>
-              {!extractingMeta && metadata.document_title && (
-                <div className="flex items-center gap-1 text-xs text-green-600">
-                  <CheckCircle2 className="h-3 w-3" />
-                  Auto-filled
-                </div>
-              )}
-            </div>
-
-            {/* Progress bar overlay during extraction */}
-            {extractingMeta && <ExtractionProgress />}
-
-            <div className={extractingMeta ? "opacity-30 pointer-events-none" : ""}>
-              <MetadataField
-                label="Document title"
-                value={metadata.document_title}
-                onChange={v => setMetadata({ ...metadata, document_title: v })}
-                extracting={extractingMeta}
-              />
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                <MetadataField
-                  label="Client name"
-                  value={metadata.client_name}
-                  onChange={v => setMetadata({ ...metadata, client_name: v })}
-                  extracting={extractingMeta}
-                />
-                <div>
-                  <FieldLabel>Submission date</FieldLabel>
-                  <input
-                    type="date"
-                    className="input-field"
-                    value={metadata.submission_date}
-                    onChange={e => setMetadata({ ...metadata, submission_date: e.target.value })}
-                    disabled={extractingMeta}
-                  />
-                </div>
-              </div>
-              <div className="mt-4">
-                <MetadataField
-                  label="Purpose and scope"
-                  value={metadata.purpose_and_scope}
-                  onChange={v => setMetadata({ ...metadata, purpose_and_scope: v })}
-                  extracting={extractingMeta}
-                  multiline
-                  rows={3}
-                />
-              </div>
-              <div className="mt-4">
-                <MetadataField
-                  label="Client mandatory requirements"
-                  value={metadata.client_mandatory_requirements}
-                  onChange={v =>
-                    setMetadata({ ...metadata, client_mandatory_requirements: v })
-                  }
-                  extracting={extractingMeta}
-                  multiline
-                  rows={5}
-                />
-              </div>
-            </div>
-          </div>
+      {/* DIAGNOSTIC SCOPE — frameworks picker + consolidated criteria */}
+      <div className="rounded-2xl bg-white border border-pa-line p-5 md:p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="eyebrow-muted">Diagnostic scope</div>
+          <Link to="/frameworks" className="text-[12px] font-semibold text-kpmg-blue hover:text-kpmg-mediumblue inline-flex items-center gap-1">
+            <Settings className="h-3 w-3" />
+            Manage frameworks
+          </Link>
         </div>
-
-        {/* Right column: framework picker + criteria + run button */}
-        <aside className="space-y-4">
-          <div className="card">
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-xs uppercase tracking-wider text-kpmg-gray-400 font-semibold">
-                3. Select framework(s)
-              </div>
-              <Link to="/frameworks" className="text-xs text-kpmg-blue hover:text-kpmg-purple inline-flex items-center">
-                <Settings className="h-3 w-3 mr-1" />
-                Manage
-              </Link>
-            </div>
-            {frameworks.length === 0 ? (
-              <p className="text-sm text-kpmg-gray-500">Loading frameworks…</p>
-            ) : (
-              <div className="space-y-2">
-                {frameworks.map(fw => {
-                  const checked = selectedIds.has(fw.id);
-                  const enabled = fw.criteria_count > 0;
-                  return (
-                    <label
-                      key={fw.id}
-                      className={[
-                        "flex items-start gap-3 p-3 rounded-md cursor-pointer select-none transition-colors",
-                        !enabled ? "opacity-40 cursor-not-allowed" : "",
-                        checked
-                          ? "bg-kpmg-blue/10 ring-1 ring-kpmg-blue"
-                          : "ring-1 ring-kpmg-gray-100 hover:ring-kpmg-gray-200",
-                      ].join(" ")}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        disabled={!enabled}
-                        onChange={() => toggleFramework(fw.id)}
-                        className="mt-0.5 h-4 w-4 accent-kpmg-blue"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className={`font-bold uppercase tracking-wider text-sm ${checked ? "text-kpmg-blue" : "text-kpmg-gray-700"}`}>
-                          {fw.name}
-                        </div>
-                        <div className="text-xs text-kpmg-gray-500 mt-0.5">
-                          {fw.criteria_count} criteria{fw.is_public ? " · public" : ""}
-                        </div>
-                      </div>
-                    </label>
-                  );
-                })}
-              </div>
-            )}
+        {frameworks.length === 0 ? (
+          <p className="text-sm text-pa-muted">Loading frameworks…</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+            {frameworks.map(fw => {
+              const checked = selectedIds.has(fw.id);
+              const enabled = fw.criteria_count > 0;
+              return (
+                <label
+                  key={fw.id}
+                  className={[
+                    "flex items-start gap-3 p-3.5 rounded-xl cursor-pointer select-none transition-colors",
+                    !enabled ? "opacity-40 cursor-not-allowed" : "",
+                    checked
+                      ? "bg-pa-accent-soft ring-1 ring-kpmg-blue/40"
+                      : "ring-1 ring-pa-line hover:ring-kpmg-blue/30",
+                  ].join(" ")}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={!enabled}
+                    onChange={() => toggleFramework(fw.id)}
+                    className="mt-0.5 h-4 w-4 accent-kpmg-blue shrink-0"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className={`text-[13.5px] font-bold tracking-[-0.1px] truncate ${checked ? "text-kpmg-blue" : "text-pa-ink"}`}>
+                      {fw.name}
+                    </div>
+                    <div className="text-[11.5px] text-pa-muted mt-0.5">
+                      {fw.criteria_count} criteria{fw.is_public ? " · public" : ""}
+                    </div>
+                  </div>
+                </label>
+              );
+            })}
           </div>
+        )}
 
-          {selectedIds.size > 0 && (
-            <div className="card">
-              <div className="text-xs uppercase tracking-wider text-kpmg-gray-400 font-semibold mb-3">
-                Consolidated diagnostic scope
-              </div>
-              {consolidated.length === 0 ? (
-                <p className="text-sm text-kpmg-gray-500">Loading criteria…</p>
-              ) : (
-                <div className="space-y-2 max-h-[420px] overflow-y-auto">
-                  {consolidated.map((c, idx) => {
-                    const enabled = !disabledCriteria.has(c.name);
-                    return (
-                      <label
-                        key={c.name}
-                        className={[
-                          "flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer text-sm",
-                          enabled ? "ring-1 ring-kpmg-gray-100 hover:bg-kpmg-gray-50" : "ring-1 ring-kpmg-gray-100 opacity-50",
-                        ].join(" ")}
-                      >
-                        <span className="h-6 w-6 rounded-full bg-kpmg-gray-100 text-kpmg-gray-600 text-xs font-bold flex items-center justify-center flex-shrink-0">
-                          {idx + 1}
-                        </span>
-                        <span
-                          className={`flex-1 truncate ${enabled ? "text-kpmg-gray-800" : "text-kpmg-gray-400 line-through"}`}
-                          title={c.description || c.fromFramework}
-                        >
-                          {c.name}
-                        </span>
-                        <input
-                          type="checkbox"
-                          checked={enabled}
-                          onChange={() => toggleCriterion(c.name)}
-                          className="h-4 w-4 accent-kpmg-blue"
-                        />
-                      </label>
-                    );
-                  })}
-                </div>
-              )}
-              <div className="text-xs text-kpmg-gray-400 mt-3">
-                {enabledCount} of {consolidated.length} criteria enabled.
+        {selectedIds.size > 0 && consolidated.length > 0 && (
+          <div className="mt-5 pt-5 border-t border-pa-line-soft">
+            <div className="flex items-center justify-between mb-3">
+              <div className="eyebrow-muted">Consolidated criteria</div>
+              <div className="text-[11.5px] text-pa-muted">
+                {enabledCount} of {consolidated.length} enabled
               </div>
             </div>
-          )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[280px] overflow-y-auto pr-1">
+              {consolidated.map((c, idx) => {
+                const enabled = !disabledCriteria.has(c.name);
+                return (
+                  <label
+                    key={c.name}
+                    className={[
+                      "flex items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer text-[13px]",
+                      enabled ? "ring-1 ring-pa-line hover:bg-pa-cream-soft" : "ring-1 ring-pa-line opacity-50",
+                    ].join(" ")}
+                  >
+                    <span className="h-5 w-5 rounded-full bg-pa-cream text-pa-muted text-[10.5px] font-bold flex items-center justify-center shrink-0 tabular-nums">
+                      {idx + 1}
+                    </span>
+                    <span
+                      className={`flex-1 truncate ${enabled ? "text-pa-ink" : "text-pa-muted line-through"}`}
+                      title={c.description || c.fromFramework}
+                    >
+                      {c.name}
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={enabled}
+                      onChange={() => toggleCriterion(c.name)}
+                      className="h-4 w-4 accent-kpmg-blue"
+                    />
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
 
-          {running ? (
+      {/* FOOTER ACTIONS */}
+      <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2.5">
+        {running ? (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-[11px] bg-pa-danger text-white text-[13.5px] font-bold hover:brightness-95 shadow-card transition"
+          >
+            <StopCircle className="h-4 w-4" />
+            Cancel diagnostic
+          </button>
+        ) : (
+          <>
             <button
               type="button"
-              onClick={onCancel}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-md py-3 px-4 font-bold uppercase tracking-wider text-sm bg-red-600 text-white hover:bg-red-700 transition-colors"
+              onClick={() => navigate("/dashboard")}
+              className="inline-flex items-center justify-center px-5 py-3 rounded-[11px] bg-white border border-pa-line text-[13.5px] font-bold text-pa-body hover:bg-pa-cream transition-colors"
             >
-              <StopCircle className="h-4 w-4" />
-              Cancel Diagnostic
+              Cancel
             </button>
-          ) : (
             <button
               type="button"
               onClick={onRun}
               disabled={!canRun}
               className={[
-                "w-full inline-flex items-center justify-center gap-2 rounded-md py-3 px-4 font-bold uppercase tracking-wider text-sm transition-colors",
+                "inline-flex items-center justify-center gap-2 px-6 py-3 rounded-[11px] text-[13.5px] font-bold transition-colors",
                 canRun
-                  ? "bg-kpmg-blue text-white hover:bg-kpmg-purple"
-                  : "bg-kpmg-gray-100 text-kpmg-gray-400 cursor-not-allowed",
+                  ? "bg-kpmg-blue text-white hover:bg-kpmg-mediumblue shadow-accent"
+                  : "bg-pa-line text-pa-muted cursor-not-allowed",
               ].join(" ")}
             >
-              <Sparkles className="h-4 w-4" />
-              Run AI Diagnostic
+              <Zap className="h-4 w-4" />
+              Run AI diagnostic
             </button>
-          )}
-        </aside>
+          </>
+        )}
       </div>
 
       {error && (
         <div
           role="alert"
-          className="flex items-start gap-2 p-3 rounded bg-red-50 border border-red-200 text-sm text-kpmg-error"
+          className="flex items-start gap-2 p-3 rounded-lg bg-pa-danger-soft border border-pa-danger/20 text-sm text-pa-danger"
         >
           <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
           <span>{error}</span>
@@ -620,6 +640,7 @@ function MetadataField({
   extracting,
   multiline = false,
   rows = 2,
+  placeholder,
 }: {
   label: string;
   value: string;
@@ -627,6 +648,7 @@ function MetadataField({
   extracting: boolean;
   multiline?: boolean;
   rows?: number;
+  placeholder?: string;
 }) {
   return (
     <div>
@@ -636,6 +658,7 @@ function MetadataField({
           rows={rows}
           className="input-field"
           value={value}
+          placeholder={placeholder}
           onChange={e => onChange(e.target.value)}
           disabled={extracting}
         />
@@ -643,6 +666,7 @@ function MetadataField({
         <input
           className="input-field"
           value={value}
+          placeholder={placeholder}
           onChange={e => onChange(e.target.value)}
           disabled={extracting}
         />

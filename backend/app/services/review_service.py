@@ -270,11 +270,11 @@ async def run_review(
         model_to_use = ollama_service.DEFAULT_MODEL
         persisted_prompt = (review_prompt or "").strip()
 
-    # Apply user preferences: a saved per-user model overrides the system default
-    # ONLY when there's no explicit framework model. Per-user options ALWAYS apply.
+    # User's saved LLM preference wins. Framework's stored model is the fallback
+    # for users who haven't set a preference. Per-user options always apply.
     user_pref = await llm_pref_service.get(db, user=user)
     user_options = dict(user_pref.options) if user_pref else {}
-    if user_pref and user_pref.model and not framework_list:
+    if user_pref and user_pref.model:
         model_to_use = user_pref.model
 
     result = await ollama_service.generate(
@@ -330,16 +330,76 @@ def _safe_str(v) -> str:
     return str(v).strip()
 
 
+def _sanitize_loose_json(text: str) -> str:
+    """Best-effort fixes for common LLM JSON-ish output:
+    - // line comments and /* block */ comments
+    - trailing commas before ] or }
+    - unquoted property names ({ foo: 1 } -> { "foo": 1 })
+    - single-quoted strings ('a' -> "a")
+    String contents themselves are preserved exactly when already double-
+    quoted; we only operate on structure.
+    """
+    s = text
+    # Strip line and block comments (rare but seen).
+    s = re.sub(r"//[^\n]*", "", s)
+    s = re.sub(r"/\*.*?\*/", "", s, flags=re.DOTALL)
+    # Trailing commas before close braces/brackets.
+    s = re.sub(r",(\s*[}\]])", r"\1", s)
+    # Unquoted keys: {foo: ...} or , foo: ... -> {"foo": ...}.
+    # Conservative: only matches identifier-ish keys preceded by { or , and
+    # followed by a colon, leaving anything already quoted untouched.
+    s = re.sub(
+        r'([{,]\s*)([A-Za-z_][A-Za-z0-9_\-]*)(\s*:)',
+        r'\1"\2"\3',
+        s,
+    )
+    # Convert single-quoted strings to double-quoted.
+    # Only the simple case: 'text without internal escaped quotes'.
+    s = re.sub(r"'([^'\\]*)'", r'"\1"', s)
+    return s
+
+
 def _parse_metadata_json(text: str) -> dict:
-    cleaned = re.sub(r"^```(?:json)?\s*", "", text.strip(), flags=re.IGNORECASE)
-    cleaned = re.sub(r"\s*```\s*$", "", cleaned)
-    try:
-        data = json.loads(cleaned)
-    except json.JSONDecodeError:
-        m = re.search(r"\{.*\}", cleaned, re.DOTALL)
-        if not m:
-            raise ValueError("AI metadata response was not valid JSON.")
-        data = json.loads(m.group(0))
+    """Tolerant parser for the LLM's metadata JSON response.
+
+    Tries strict JSON first, then progressively sanitizes common LLM
+    malformations (markdown fences, trailing commas, single-quoted strings,
+    unquoted property names, leading/trailing prose) until parsing succeeds
+    or every recovery attempt fails.
+    """
+    raw = text.strip()
+    # Strip markdown code fences anywhere (not just edges).
+    cleaned = re.sub(r"```(?:json)?\s*", "", raw, flags=re.IGNORECASE)
+    cleaned = cleaned.replace("```", "").strip()
+
+    candidates: list[str] = [cleaned]
+    # Try just the first balanced-looking object in the response.
+    m = re.search(r"\{.*\}", cleaned, re.DOTALL)
+    if m and m.group(0) != cleaned:
+        candidates.append(m.group(0))
+    # Apply progressive sanitization to the most-likely-JSON slice.
+    sanitized = _sanitize_loose_json(candidates[-1])
+    if sanitized != candidates[-1]:
+        candidates.append(sanitized)
+
+    last_err: Exception | None = None
+    data: object = None
+    for c in candidates:
+        try:
+            data = json.loads(c)
+            break
+        except json.JSONDecodeError as e:
+            last_err = e
+            continue
+    else:
+        # All attempts failed — surface a clipped preview of the LLM output
+        # so the operator can see what the model actually returned.
+        preview = raw[:240].replace("\n", " ")
+        raise ValueError(
+            f"AI metadata response was not valid JSON: {last_err}. "
+            f"First 240 chars: {preview!r}"
+        )
+
     if not isinstance(data, dict):
         raise ValueError("AI metadata response was not a JSON object.")
     return {
@@ -378,7 +438,7 @@ async def extract_metadata(
             options = dict(pref.options or {})
 
     result = await ollama_service.generate(
-        prompt, system=METADATA_SYSTEM, model=model, options=options
+        prompt, system=METADATA_SYSTEM, model=model, options=options, format="json"
     )
     return _parse_metadata_json(result.output)
 
@@ -407,6 +467,26 @@ async def get_for_user(
     return q.scalar_one_or_none()
 
 
+def _aggregate_score_from_output(review_output: str | None) -> float | None:
+    """Parse all `Score: X/10` lines in a review's combined markdown output
+    and return the rounded mean (1-decimal). Returns None if no scores
+    could be parsed — typically the case for legacy free-form reviews."""
+    if not review_output:
+        return None
+    matches = re.findall(r"[Ss]core:\s*([\d.]+)\s*/\s*10", review_output)
+    scores: list[float] = []
+    for raw in matches:
+        try:
+            v = float(raw)
+        except ValueError:
+            continue
+        if 0.0 <= v <= 10.0:
+            scores.append(v)
+    if not scores:
+        return None
+    return round(sum(scores) / len(scores), 1)
+
+
 def to_summary_dict(row: ProposalReview) -> dict:
     return {
         "id": row.id,
@@ -419,6 +499,7 @@ def to_summary_dict(row: ProposalReview) -> dict:
         "document_class": row.document_class,
         "framework_ids": list(row.framework_ids or []),
         "extracted_metadata": dict(row.extracted_metadata or {}),
+        "aggregate_score": _aggregate_score_from_output(row.review_output),
         "created_at": row.created_at,
     }
 
@@ -467,11 +548,12 @@ async def run_review_streaming(
             seen.add(name)
             criteria_list.append(c)
 
-    # 3. Resolve model + user prefs
+    # 3. Resolve model + user prefs — user's saved LLM preference wins; the
+    # framework's stored model is the fallback when the user hasn't set one.
     model_to_use = (frameworks[0].model if frameworks else "") or ollama_service.DEFAULT_MODEL
     user_pref = await llm_pref_service.get(db, user=user)
     user_options = dict(user_pref.options) if user_pref else {}
-    if user_pref and user_pref.model and not frameworks:
+    if user_pref and user_pref.model:
         model_to_use = user_pref.model
 
     # 4. Emit start event

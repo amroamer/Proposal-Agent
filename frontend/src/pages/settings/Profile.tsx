@@ -60,37 +60,46 @@ export function ProfilePage() {
   };
 
   return (
-    <section className="space-y-4">
+    <section className="space-y-5">
       <div>
-        <h2 className="text-lg font-semibold text-kpmg-gray-800">Profile</h2>
-        <p className="text-sm text-kpmg-gray-500 mt-1">Your name and the email shown across the app.</p>
+        <h2 className="text-[20px] font-bold text-pa-ink tracking-[-0.3px]">Profile</h2>
+        <p className="text-sm text-pa-muted mt-1.5 max-w-[560px]">
+          Your name and the email shown across the app.
+        </p>
       </div>
 
       {error && (
-        <div role="alert" className="p-3 rounded bg-red-50 border border-red-200 text-sm text-kpmg-error">
+        <div role="alert" className="p-3 rounded-lg bg-pa-danger-soft border border-pa-danger/20 text-sm text-pa-danger">
           {error}
         </div>
       )}
       {msg && (
-        <div role="status" className="p-3 rounded bg-green-50 border border-green-200 text-sm text-green-800">
+        <div role="status" className="p-3 rounded-lg bg-pa-success-soft border border-pa-success/20 text-sm text-pa-success">
           {msg}
         </div>
       )}
 
-      <form onSubmit={handleSubmit(onSubmit)} className="card space-y-4">
+      <form
+        onSubmit={handleSubmit(onSubmit)}
+        className="rounded-2xl bg-white border border-pa-line p-5 md:p-6 space-y-4"
+      >
         <div>
-          <label className="block text-sm font-medium text-kpmg-gray-700 mb-1">Email</label>
-          <input className="input-field bg-kpmg-gray-50" value={email ?? ""} disabled />
+          <label className="block text-[11px] font-bold uppercase tracking-[0.08em] text-pa-muted mb-1.5">
+            Email
+          </label>
+          <input className="input-field bg-pa-cream-soft" value={email ?? ""} disabled />
         </div>
         <div>
-          <label className="block text-sm font-medium text-kpmg-gray-700 mb-1">Full name</label>
+          <label className="block text-[11px] font-bold uppercase tracking-[0.08em] text-pa-muted mb-1.5">
+            Full name
+          </label>
           <input
             className="input-field"
             {...register("full_name", { required: true, minLength: 1, maxLength: 200 })}
           />
-          {errors.full_name && <p className="mt-1 text-xs text-kpmg-error">Required.</p>}
+          {errors.full_name && <p className="mt-1 text-xs text-pa-danger">Required.</p>}
         </div>
-        <div className="flex justify-end">
+        <div className="flex justify-end pt-1">
           <button type="submit" className="btn-primary" disabled={isSubmitting}>
             {isSubmitting ? "Saving…" : "Save profile"}
           </button>

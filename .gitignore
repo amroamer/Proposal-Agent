@@ -23,3 +23,6 @@ Thumbs.db
 
 # Database volumes
 db/data/
+
+# Claude Code worktree scratch state
+.claude/worktrees/

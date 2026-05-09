@@ -340,7 +340,7 @@ export function CriteriaEditor({
             <div className="flex items-center gap-1">
               <input
                 autoFocus
-                className="input-field text-sm py-1.5 px-3 w-44"
+                className="input-field text-sm py-1.5 px-3 w-full sm:w-44"
                 value={newGroupName}
                 onChange={(e) => setNewGroupName(e.target.value)}
                 onKeyDown={(e) => {

@@ -54,12 +54,16 @@ async def generate(
     model: str = DEFAULT_MODEL,
     options: dict | None = None,
     timeout_s: int | None = None,
+    format: str | None = None,
 ) -> GenerateResult:
     """Single-shot non-streaming call to Ollama's /api/generate.
 
     `options` is a dict of standard Ollama sampling/generation options
     (temperature, top_p, top_k, num_ctx, num_predict, repeat_penalty,
     seed, mirostat*, stop, ...). Missing keys fall back to model defaults.
+
+    `format` is Ollama's response format constraint. Pass "json" to force
+    strict-JSON output (used by structured extractors like metadata).
 
     Raises OllamaError on transport failure or non-2xx response.
     """
@@ -73,6 +77,8 @@ async def generate(
     }
     if system:
         payload["system"] = system
+    if format:
+        payload["format"] = format
     cleaned_options = {k: v for k, v in (options or {}).items() if v is not None and v != ""}
     if cleaned_options:
         payload["options"] = cleaned_options

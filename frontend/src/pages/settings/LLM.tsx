@@ -207,14 +207,18 @@ export function LLMPage() {
 
   return (
     <section className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold text-kpmg-gray-800">LLM preferences</h2>
-        <p className="text-sm text-kpmg-gray-500 mt-1">
-          Configure the model and sampling parameters used when reviewing proposals and
-          extracting metadata. The app talks to the shared Ollama service at the host —
-          a separate Ollama container is not run.
-        </p>
+      <div className="flex items-center gap-3 flex-wrap">
+        <h2 className="text-[20px] font-semibold text-pa-ink tracking-[-0.3px]">LLM preferences</h2>
+        <span className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-pa-accent px-2.5 py-1 rounded-md bg-pa-accent-soft">
+          <span className="h-1.5 w-1.5 rounded-full bg-pa-success" />
+          Healthy
+        </span>
       </div>
+      <p className="text-sm text-pa-muted -mt-3 leading-relaxed max-w-[640px]">
+        Configure the model and sampling parameters used when reviewing proposals and
+        extracting metadata. The app talks to the shared Ollama service at the host —
+        a separate Ollama container is not run.
+      </p>
 
       {error && (
         <div role="alert" className="p-3 rounded bg-red-50 border border-red-200 text-sm text-kpmg-error flex items-start gap-2">
