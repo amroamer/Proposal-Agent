@@ -68,23 +68,28 @@ def _extract_pptx(content: bytes) -> str:
             # Plain text shapes (titles, body, text boxes)
             if shape.has_text_frame:
                 for para in shape.text_frame.paragraphs:
-                    line = "".join(run.text for run in para.runs).strip()
+                    line = "".join((run.text or "") for run in para.runs).strip()
                     if line:
                         slide_chunks.append(line)
 
             # Tables — flatten row-by-row
             if shape.has_table:
                 for row in shape.table.rows:
-                    cells = [cell.text.strip() for cell in row.cells]
+                    cells = [(cell.text or "").strip() for cell in row.cells]
                     cells = [c for c in cells if c]
                     if cells:
                         slide_chunks.append(" | ".join(cells))
 
-        # Speaker notes
+        # Speaker notes — has_notes_slide can be True while notes_text_frame
+        # is None (e.g. PowerPoint-generated decks where notes slides were
+        # pre-instantiated without a body placeholder). Both guards required
+        # or this raises AttributeError on every real-world deck.
         if slide.has_notes_slide:
-            notes = slide.notes_slide.notes_text_frame.text.strip()
-            if notes:
-                slide_chunks.append(f"_Speaker notes:_ {notes}")
+            ntf = slide.notes_slide.notes_text_frame
+            if ntf is not None:
+                notes = (ntf.text or "").strip()
+                if notes:
+                    slide_chunks.append(f"_Speaker notes:_ {notes}")
 
         if len(slide_chunks) > 1:
             parts.append("\n".join(slide_chunks))
@@ -99,14 +104,17 @@ def _extract_docx(content: bytes) -> str:
     doc = Document(io.BytesIO(content))
     parts: list[str] = []
 
+    # Defensive `or ""` wraps: python-docx normally returns str, but corrupt
+    # or unusual documents have been seen returning None for empty placeholders.
     for para in doc.paragraphs:
-        text = para.text.strip()
+        text = (para.text or "").strip()
         if text:
             parts.append(text)
 
     for table in doc.tables:
         for row in table.rows:
-            cells = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+            cells = [(cell.text or "").strip() for cell in row.cells]
+            cells = [c for c in cells if c]
             if cells:
                 parts.append(" | ".join(cells))
 
@@ -121,7 +129,9 @@ def _extract_pdf(content: bytes) -> str:
     try:
         parts: list[str] = []
         for idx, page in enumerate(doc, start=1):
-            text = page.get_text("text").strip()
+            # `or ""` guards against image-only / scanned pages that return None
+            # in some PyMuPDF builds for certain encrypted or malformed PDFs.
+            text = (page.get_text("text") or "").strip()
             if text:
                 parts.append(f"\n## Page {idx}\n{text}")
         return "\n".join(parts)
