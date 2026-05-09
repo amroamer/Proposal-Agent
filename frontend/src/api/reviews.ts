@@ -111,6 +111,68 @@ export async function getReview(id: number): Promise<ReviewDetail> {
   return res.data;
 }
 
+/** Fetch the original uploaded file for a review as a Blob.
+ *  Returns null if the review predates V013 (no stored bytes). */
+export async function getReviewFileBlob(
+  id: number,
+  disposition: "attachment" | "inline" = "attachment",
+): Promise<{ blob: Blob; filename: string } | null> {
+  const res = await api.get(`/reviews/${id}/file`, {
+    params: { disposition },
+    responseType: "blob",
+    // Tolerate 404 so the caller can handle "not stored" gracefully.
+    validateStatus: s => s === 200 || s === 404,
+  });
+  if (res.status === 404) return null;
+
+  // Try to recover the filename from the server's Content-Disposition.
+  // Falls back to a generic name if parsing fails.
+  let filename = `review-${id}`;
+  const cd = res.headers["content-disposition"];
+  if (typeof cd === "string") {
+    // RFC 5987: filename*=UTF-8''<percent-encoded>
+    const star = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+    if (star) {
+      try { filename = decodeURIComponent(star[1]); } catch { /* keep fallback */ }
+    } else {
+      const plain = /filename="?([^";]+)"?/i.exec(cd);
+      if (plain) filename = plain[1];
+    }
+  }
+  return { blob: res.data as Blob, filename };
+}
+
+/** Trigger a browser download of the review's source file. */
+export async function downloadReviewFile(id: number): Promise<boolean> {
+  const got = await getReviewFileBlob(id, "attachment");
+  if (!got) return false;
+  const url = URL.createObjectURL(got.blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = got.filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Give the browser a tick to start the download before we revoke.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return true;
+}
+
+/** Open the review's source file in a new tab (PDFs render inline; Office
+ *  formats will typically download since browsers can't render them). */
+export async function openReviewFile(id: number): Promise<boolean> {
+  const got = await getReviewFileBlob(id, "inline");
+  if (!got) return false;
+  const url = URL.createObjectURL(got.blob);
+  const w = window.open(url, "_blank", "noopener,noreferrer");
+  if (!w) {
+    // Pop-up blocker fired — fall back to a same-tab nav.
+    window.location.href = url;
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return true;
+}
+
 // -------- SSE Streaming types & client --------
 
 export interface StreamStartEvent {

@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
-  ArrowRight, Sparkles, Download, FileText as FileIcon,
+  ArrowRight, Sparkles, Download, ExternalLink, FileText as FileIcon,
   CheckCircle, AlertTriangle, Clock, Users, BookOpen, Zap, Scale, Star, Workflow,
   type LucideIcon,
 } from "lucide-react";
-import { getReview, type ReviewDetail } from "../api/reviews";
+import {
+  getReview,
+  downloadReviewFile,
+  openReviewFile,
+  type ReviewDetail,
+} from "../api/reviews";
 import { extractApiError } from "../api/client";
 import {
   parseReviewOutput,
@@ -67,6 +72,36 @@ export function ReviewDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [data, setData] = useState<ReviewDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [fileBusy, setFileBusy] = useState<"" | "download" | "view">("");
+  const [fileError, setFileError] = useState<string | null>(null);
+
+  const onDownload = async () => {
+    if (!id) return;
+    setFileBusy("download");
+    setFileError(null);
+    try {
+      const ok = await downloadReviewFile(Number(id));
+      if (!ok) setFileError("Original file isn't stored for this review.");
+    } catch (e) {
+      setFileError(extractApiError(e));
+    } finally {
+      setFileBusy("");
+    }
+  };
+
+  const onView = async () => {
+    if (!id) return;
+    setFileBusy("view");
+    setFileError(null);
+    try {
+      const ok = await openReviewFile(Number(id));
+      if (!ok) setFileError("Original file isn't stored for this review.");
+    } catch (e) {
+      setFileError(extractApiError(e));
+    } finally {
+      setFileBusy("");
+    }
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -128,14 +163,40 @@ export function ReviewDetailPage() {
               <FileIcon className="h-3.5 w-3.5" />
             </div>
             <div className="min-w-0">
-              <div className="text-[12.5px] font-bold text-pa-ink font-mono truncate">
+              <div className="text-[12.5px] font-bold text-pa-ink font-mono truncate" title={data.source_filename}>
                 {data.source_filename}
               </div>
               <div className="text-[10.5px] text-pa-muted mt-0.5">
-                {fmtBytes(data.source_size_bytes)}
+                {fmtBytes(data.source_size_bytes)} · {data.source_kind.toUpperCase()}
               </div>
             </div>
           </div>
+
+          <div className="mt-3 flex gap-1.5">
+            <button
+              type="button"
+              onClick={onView}
+              disabled={fileBusy !== ""}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-pa-line text-[11px] font-bold tracking-[0.04em] uppercase text-pa-body hover:bg-pa-cream disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              title="Open the file in a new tab"
+            >
+              <ExternalLink className="h-3 w-3" />
+              {fileBusy === "view" ? "Opening…" : "View"}
+            </button>
+            <button
+              type="button"
+              onClick={onDownload}
+              disabled={fileBusy !== ""}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-kpmg-blue text-white text-[11px] font-bold tracking-[0.04em] uppercase hover:bg-kpmg-mediumblue disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              title="Download the original file"
+            >
+              <Download className="h-3 w-3" />
+              {fileBusy === "download" ? "Saving…" : "Download"}
+            </button>
+          </div>
+          {fileError && (
+            <div className="mt-2 text-[10.5px] text-pa-danger leading-tight">{fileError}</div>
+          )}
         </div>
 
         <div>

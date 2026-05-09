@@ -8,8 +8,9 @@ criterion independently and yields results as they complete.
 import json
 import logging
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
+from fastapi.responses import Response, StreamingResponse
+from urllib.parse import quote as url_quote
 
 from app.core.deps import CurrentUser, DbSession
 from app.schemas.review import (
@@ -321,3 +322,55 @@ async def get_review(review_id: int, db: DbSession, user: CurrentUser):
     if not row:
         raise HTTPException(status_code=404, detail="Review not found.")
     return row
+
+
+_KIND_TO_MIME = {
+    "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "pdf":  "application/pdf",
+}
+
+
+@router.get(
+    "/{review_id}/file",
+    summary="Download the original uploaded file (PPTX / DOCX / PDF)",
+    responses={
+        200: {"content": {"application/octet-stream": {}}, "description": "Raw file bytes"},
+        404: {"description": "Review or source bytes not found"},
+    },
+)
+async def get_review_file(
+    review_id: int,
+    db: DbSession,
+    user: CurrentUser,
+    disposition: str = Query("attachment", regex="^(attachment|inline)$"),
+):
+    """Return the original uploaded proposal file.
+
+    `disposition=attachment` (default) triggers a browser download;
+    `disposition=inline` lets the browser try to render it (useful for
+    PDFs — Office formats will still be saved by most browsers).
+
+    Returns 404 if the review predates V013 and has no stored bytes.
+    """
+    row = await review_service.get_for_user(db, user=user, review_id=review_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Review not found.")
+
+    # source_bytes is deferred — explicitly load it for this row.
+    await db.refresh(row, attribute_names=["source_bytes"])
+    if not row.source_bytes:
+        raise HTTPException(
+            status_code=404,
+            detail="Original file is not available for this review (likely created before file storage was enabled).",
+        )
+
+    media_type = _KIND_TO_MIME.get(row.source_kind, "application/octet-stream")
+    # RFC 5987 filename* lets us safely transmit non-ASCII filenames
+    # (e.g. Arabic proposal titles) in the Content-Disposition header.
+    encoded = url_quote(row.source_filename, safe="")
+    headers = {
+        "Content-Disposition": f"{disposition}; filename*=UTF-8''{encoded}",
+        "Content-Length": str(len(row.source_bytes)),
+    }
+    return Response(content=row.source_bytes, media_type=media_type, headers=headers)

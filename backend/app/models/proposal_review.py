@@ -1,7 +1,7 @@
 """ProposalReview ORM model — AI-driven review of an uploaded proposal."""
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, LargeBinary, String, Text, func
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -27,6 +27,13 @@ class ProposalReview(Base):
     framework_ids:      Mapped[list[int]] = mapped_column(ARRAY(BigInteger), nullable=False, default=list)
     disabled_criteria:  Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
     document_class:     Mapped[str]       = mapped_column(String(32), nullable=False, default="proposal")
+
+    # Added by V013. Stored as BYTEA, deferred so list/get queries don't drag
+    # tens of MB across the wire — only loaded when the file-download endpoint
+    # explicitly accesses it via session.refresh(row, attribute_names=...).
+    source_bytes:      Mapped[bytes | None] = mapped_column(
+        LargeBinary, nullable=True, deferred=True
+    )
 
     created_at:        Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at:        Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
