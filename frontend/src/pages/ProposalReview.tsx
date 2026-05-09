@@ -82,6 +82,8 @@ export function ProposalReviewPage() {
   // Full extraction payload kept around so the user can download the
   // parsed text / structured JSON without re-uploading.
   const [extractedPayload, setExtractedPayload] = useState<ExtractMetadataResponse | null>(null);
+  // Which derivative the preview modal is showing — null = closed.
+  const [previewMode, setPreviewMode] = useState<null | "md" | "json">(null);
 
   // Run + progressive streaming result
   const [running, setRunning] = useState(false);
@@ -402,18 +404,18 @@ export function ProposalReviewPage() {
                   <>
                     <button
                       type="button"
-                      onClick={(e) => { e.stopPropagation(); onDownloadMd(); }}
+                      onClick={(e) => { e.stopPropagation(); setPreviewMode("md"); }}
                       className="px-2.5 py-1.5 rounded-md text-[11.5px] font-bold text-pa-body border border-pa-line hover:bg-pa-cream inline-flex items-center gap-1"
-                      title="Download the parsed text as Markdown"
+                      title="Preview the parsed text as Markdown"
                     >
                       <FileText className="h-3.5 w-3.5" />
                       MD
                     </button>
                     <button
                       type="button"
-                      onClick={(e) => { e.stopPropagation(); onDownloadJson(); }}
+                      onClick={(e) => { e.stopPropagation(); setPreviewMode("json"); }}
                       className="px-2.5 py-1.5 rounded-md text-[11.5px] font-bold text-pa-body border border-pa-line hover:bg-pa-cream inline-flex items-center gap-1"
-                      title="Download metadata + parsed text as JSON"
+                      title="Preview metadata + parsed text as JSON"
                     >
                       <FileText className="h-3.5 w-3.5" />
                       JSON
@@ -664,11 +666,129 @@ export function ProposalReviewPage() {
           navigate={navigate}
         />
       )}
+
+      {/* MD / JSON preview modal — renders the same content the Download
+          button would save. Lets the user verify before committing. */}
+      {previewMode && extractedPayload && (
+        <ExtractionPreviewModal
+          mode={previewMode}
+          payload={extractedPayload}
+          onClose={() => setPreviewMode(null)}
+          onDownload={previewMode === "md" ? onDownloadMd : onDownloadJson}
+        />
+      )}
     </div>
   );
 }
 
 // ---------- helpers ----------
+
+function ExtractionPreviewModal({
+  mode,
+  payload,
+  onClose,
+  onDownload,
+}: {
+  mode: "md" | "json";
+  payload: ExtractMetadataResponse;
+  onClose: () => void;
+  onDownload: () => void;
+}) {
+  const content = useMemo(
+    () => mode === "md" ? buildExtractedMarkdown(payload) : buildExtractedJson(payload),
+    [mode, payload],
+  );
+  const title = mode === "md" ? "Markdown preview" : "JSON preview";
+  const subtitle =
+    mode === "md"
+      ? "How the parsed text + metadata will look in the .md file."
+      : "Structured data that will be saved to the .json file.";
+
+  // Close on Escape; also lock background scroll while open.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl border border-pa-line w-full max-w-[1000px] max-h-[90vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between gap-4 px-5 py-4 border-b border-pa-line-soft">
+          <div className="min-w-0">
+            <h2 className="text-[15px] font-bold text-pa-ink">{title}</h2>
+            <p className="text-[12px] text-pa-muted mt-0.5">{subtitle}</p>
+            <p className="text-[11px] text-pa-muted/80 mt-0.5 font-mono truncate">
+              {payload.source_filename || "document"}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-2.5 py-1 rounded-md text-[11.5px] font-bold text-pa-body border border-pa-line hover:bg-pa-cream shrink-0"
+            aria-label="Close preview"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 min-h-0 overflow-auto p-5 bg-pa-cream-soft">
+          {mode === "md" ? (
+            <article className="prose prose-sm max-w-none bg-white p-5 rounded-lg border border-pa-line-soft">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+            </article>
+          ) : (
+            <pre className="text-[12px] leading-[1.55] font-mono whitespace-pre-wrap break-words bg-white p-4 rounded-lg border border-pa-line-soft text-pa-ink">
+              {content}
+            </pre>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-pa-line-soft">
+          <span className="text-[11.5px] text-pa-muted">
+            {content.length.toLocaleString()} chars
+            {mode === "md" ? " · Markdown" : " · JSON"}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3 py-1.5 rounded-md text-[12px] font-bold text-pa-body border border-pa-line hover:bg-pa-cream"
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              onClick={onDownload}
+              className="px-4 py-1.5 rounded-md text-[12px] font-bold text-white bg-kpmg-blue hover:bg-kpmg-mediumblue inline-flex items-center gap-1.5"
+              title={`Download as ${mode.toUpperCase()}`}
+            >
+              <FileText className="h-3.5 w-3.5" />
+              Download
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
