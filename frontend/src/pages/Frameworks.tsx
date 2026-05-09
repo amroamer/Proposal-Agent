@@ -306,11 +306,24 @@ export function FrameworksPage() {
 
           {!loadingDetail && draft && (
             <div className="card space-y-6">
-              {/* Name */}
+              {/* Name + always-visible delete affordance */}
               <div>
-                <label className="block text-xs uppercase tracking-wider text-kpmg-gray-400 font-semibold mb-2">
-                  Framework Name
-                </label>
+                <div className="flex items-end justify-between gap-3 mb-2">
+                  <label className="block text-xs uppercase tracking-wider text-kpmg-gray-400 font-semibold">
+                    Framework Name
+                  </label>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDelete(true)}
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-pa-danger hover:text-pa-danger/80 transition-colors"
+                      title="Delete this framework"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Delete framework
+                    </button>
+                  )}
+                </div>
                 <input
                   className="input-field text-2xl font-bold text-kpmg-blue"
                   value={draft.name}
