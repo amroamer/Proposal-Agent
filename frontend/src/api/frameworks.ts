@@ -75,13 +75,11 @@ export async function deleteFramework(id: number): Promise<void> {
 export async function autoGenCriteria(file: File): Promise<{ criteria: FrameworkCriterion[] }> {
   const fd = new FormData();
   fd.append("file", file);
+  // axios auto-sets Content-Type with boundary for FormData. Manual override breaks it.
   const res = await api.post<{ criteria: FrameworkCriterion[] }>(
     "/frameworks/auto-gen",
     fd,
-    {
-      headers: { "Content-Type": "multipart/form-data" },
-      timeout: 5 * 60 * 1000,
-    },
+    { timeout: 5 * 60 * 1000 },
   );
   return res.data;
 }
@@ -124,10 +122,7 @@ function getToken(): string {
 export async function importFramework(file: File): Promise<Framework> {
   const fd = new FormData();
   fd.append("file", file);
-  const res = await api.post<Framework>(
-    "/frameworks/import",
-    fd,
-    { headers: { "Content-Type": "multipart/form-data" } },
-  );
+  // axios auto-sets Content-Type with boundary for FormData. Manual override breaks it.
+  const res = await api.post<Framework>("/frameworks/import", fd);
   return res.data;
 }

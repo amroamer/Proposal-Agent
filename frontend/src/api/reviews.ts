@@ -80,8 +80,10 @@ export async function createReview(input: CreateReviewInput): Promise<ReviewDeta
   if (input.prompt && input.prompt.trim()) fd.append("prompt", input.prompt);
   if (input.metadata) fd.append("metadata", JSON.stringify(input.metadata));
   if (input.document_class) fd.append("document_class", input.document_class);
+  // NOTE: do NOT set Content-Type. axios auto-detects FormData and sets
+  // `multipart/form-data; boundary=...` with the correct boundary. Setting
+  // the header manually drops the boundary and the server 422s.
   const res = await api.post<ReviewDetail>("/reviews", fd, {
-    headers: { "Content-Type": "multipart/form-data" },
     timeout: 5 * 60 * 1000,
   });
   return res.data;
@@ -90,13 +92,11 @@ export async function createReview(input: CreateReviewInput): Promise<ReviewDeta
 export async function extractMetadata(file: File): Promise<ReviewMetadata> {
   const fd = new FormData();
   fd.append("file", file);
+  // axios auto-sets Content-Type with the boundary; manual override breaks it.
   const res = await api.post<{ metadata: ReviewMetadata }>(
     "/reviews/extract-metadata",
     fd,
-    {
-      headers: { "Content-Type": "multipart/form-data" },
-      timeout: 5 * 60 * 1000,
-    },
+    { timeout: 5 * 60 * 1000 },
   );
   return res.data.metadata;
 }
