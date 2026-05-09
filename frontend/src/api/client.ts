@@ -1,9 +1,12 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
 import { useAuthStore } from "../stores/auth";
 
+// NOTE: do NOT set a default Content-Type. axios chooses the right one per
+// request: "application/json" for object payloads and
+// "multipart/form-data; boundary=..." for FormData. A pinned default leaks
+// onto file uploads and the server 422s with "Field required: body.file".
 export const api = axios.create({
   baseURL: "/ProposalAgent/api/v1",
-  headers: { "Content-Type": "application/json" },
   withCredentials: true,
 });
 
