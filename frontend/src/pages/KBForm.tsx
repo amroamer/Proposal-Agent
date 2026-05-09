@@ -94,7 +94,7 @@ export function KBFormPage() {
             <label className="block text-sm font-medium text-kpmg-gray-700 mb-1">Category</label>
             <input
               className="input-field"
-              placeholder="e.g. advisory, audit, tax, general"
+              placeholder="e.g. advisory, tax, general"
               {...register("category")}
             />
             {errors.category && (

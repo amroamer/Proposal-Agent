@@ -528,8 +528,11 @@ async def extract_metadata(
     file_bytes: bytes,
     db: AsyncSession | None = None,
     user: User | None = None,
-) -> dict:
-    """Parse file → ask LLM for structured metadata → return normalised dict.
+) -> tuple[dict, str, str]:
+    """Parse file → ask LLM for structured metadata → return (metadata, text, kind).
+
+    Returns:
+        (metadata_dict, extracted_text, source_kind)
 
     Strategy: always compute a regex-based baseline from the document text
     (title from slide 1, client from cover-page patterns, ISO date if any).
@@ -538,10 +541,13 @@ async def extract_metadata(
     If the LLM fails entirely (token loop, transport error, garbage JSON),
     the user still sees a usable starting set instead of an empty form.
 
+    The extracted text and kind are returned alongside so callers (e.g. the
+    upload page) can offer MD / JSON download derivatives without re-parsing.
+
     If `db` and `user` are provided, the user's preferred model + options
     are applied; otherwise system defaults are used.
     """
-    doc_text, _ = file_parser_service.extract_text(filename, file_bytes)
+    doc_text, kind = file_parser_service.extract_text(filename, file_bytes)
 
     # Baseline always succeeds. Enrich with the LLM where we can.
     baseline = _regex_metadata_baseline(doc_text, filename)
@@ -587,9 +593,9 @@ async def extract_metadata(
             "baseline (model=%s, doc_chars=%d, sliced=%d): %s",
             model, len(doc_text), len(sliced), e,
         )
-        return baseline
+        return baseline, doc_text, kind
 
-    return _merge_metadata(ai, baseline)
+    return _merge_metadata(ai, baseline), doc_text, kind
 
 
 async def list_for_user(

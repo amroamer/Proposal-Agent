@@ -7,11 +7,15 @@ import {
   EMPTY_METADATA,
   extractMetadata,
   streamReview,
+  buildExtractedMarkdown,
+  buildExtractedJson,
+  downloadTextAs,
   type DocumentClass,
   type ReviewMetadata,
   type StreamStartEvent,
   type StreamDoneEvent,
   type SSEEvent,
+  type ExtractMetadataResponse,
 } from "../api/reviews";
 import {
   getFramework,
@@ -75,6 +79,9 @@ export function ProposalReviewPage() {
 
   // Metadata form (auto-filled, editable)
   const [metadata, setMetadata] = useState<ReviewMetadata>(EMPTY_METADATA);
+  // Full extraction payload kept around so the user can download the
+  // parsed text / structured JSON without re-uploading.
+  const [extractedPayload, setExtractedPayload] = useState<ExtractMetadataResponse | null>(null);
 
   // Run + progressive streaming result
   const [running, setRunning] = useState(false);
@@ -118,6 +125,7 @@ export function ProposalReviewPage() {
     setError(null);
     setFile(f);
     setMetadata(EMPTY_METADATA);
+    setExtractedPayload(null);
     if (!f) return;
     if (!ACCEPTED.some(ext => f.name.toLowerCase().endsWith(ext))) {
       setError(`Unsupported file type. Accepted: ${ACCEPTED.join(", ")}`);
@@ -126,14 +134,27 @@ export function ProposalReviewPage() {
     }
     setExtractingMeta(true);
     try {
-      const m = await extractMetadata(f);
-      setMetadata(m);
+      const payload = await extractMetadata(f);
+      setMetadata(payload.metadata);
+      setExtractedPayload(payload);
     } catch (e) {
       // Non-fatal — let the user fill manually.
       setError(`Could not auto-extract metadata: ${extractApiError(e)}. Please fill manually.`);
     } finally {
       setExtractingMeta(false);
     }
+  };
+
+  const onDownloadMd = () => {
+    if (!extractedPayload) return;
+    const stem = (extractedPayload.source_filename || "document").replace(/\.[^.]+$/, "");
+    downloadTextAs(`${stem}.md`, buildExtractedMarkdown(extractedPayload), "text/markdown;charset=utf-8");
+  };
+
+  const onDownloadJson = () => {
+    if (!extractedPayload) return;
+    const stem = (extractedPayload.source_filename || "document").replace(/\.[^.]+$/, "");
+    downloadTextAs(`${stem}.json`, buildExtractedJson(extractedPayload), "application/json;charset=utf-8");
   };
 
   const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -148,6 +169,7 @@ export function ProposalReviewPage() {
     e.stopPropagation();
     setFile(null);
     setMetadata(EMPTY_METADATA);
+    setExtractedPayload(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -298,10 +320,10 @@ export function ProposalReviewPage() {
     <div className="space-y-6">
       {/* HERO */}
       <div>
-        <div className="eyebrow mb-2">New audit</div>
+        <div className="eyebrow mb-2">New review</div>
         <div className="flex items-center gap-3 flex-wrap">
           <h1 className="text-3xl md:text-[32px] font-bold text-pa-ink tracking-[-0.6px] leading-tight">
-            Smart Document Audit
+            Proposal Review
           </h1>
           <span
             className="text-[11px] px-2.5 py-1 rounded-md bg-pa-accent-soft text-kpmg-blue font-mono font-bold"
@@ -375,14 +397,38 @@ export function ProposalReviewPage() {
               </div>
             </div>
             {!running && (
-              <button
-                type="button"
-                onClick={clearFile}
-                className="ml-2 px-3 py-1.5 rounded-md text-[11.5px] font-bold text-pa-body border border-pa-line hover:bg-pa-cream"
-                aria-label="Remove file"
-              >
-                Replace
-              </button>
+              <div className="flex items-center gap-1.5 ml-2">
+                {extractedPayload && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onDownloadMd(); }}
+                      className="px-2.5 py-1.5 rounded-md text-[11.5px] font-bold text-pa-body border border-pa-line hover:bg-pa-cream inline-flex items-center gap-1"
+                      title="Download the parsed text as Markdown"
+                    >
+                      <FileText className="h-3.5 w-3.5" />
+                      MD
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onDownloadJson(); }}
+                      className="px-2.5 py-1.5 rounded-md text-[11.5px] font-bold text-pa-body border border-pa-line hover:bg-pa-cream inline-flex items-center gap-1"
+                      title="Download metadata + parsed text as JSON"
+                    >
+                      <FileText className="h-3.5 w-3.5" />
+                      JSON
+                    </button>
+                  </>
+                )}
+                <button
+                  type="button"
+                  onClick={clearFile}
+                  className="px-3 py-1.5 rounded-md text-[11.5px] font-bold text-pa-body border border-pa-line hover:bg-pa-cream"
+                  aria-label="Remove file"
+                >
+                  Replace
+                </button>
+              </div>
             )}
           </div>
         ) : (

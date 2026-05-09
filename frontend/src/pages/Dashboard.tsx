@@ -134,15 +134,15 @@ export function DashboardPage() {
     return "Good evening";
   })();
 
-  // Audits this week — count recent items whose created_at is within 7 days.
+  // Reviews this week — count recent items whose created_at is within 7 days.
   const weekCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
   const thisWeek = recent.filter(r => new Date(r.created_at).getTime() >= weekCutoff).length;
   const subtitle =
     counts.total === null
-      ? "Loading audits…"
+      ? "Loading reviews…"
       : counts.total === 0
-        ? "No audits yet — kick off your first one to populate this view."
-        : `${thisWeek} audit${thisWeek === 1 ? "" : "s"} this week · ${recent.length} recent`;
+        ? "No reviews yet — kick off your first one to populate this view."
+        : `${thisWeek} review${thisWeek === 1 ? "" : "s"} this week · ${recent.length} recent`;
 
   return (
     <div className="space-y-6">
@@ -159,18 +159,18 @@ export function DashboardPage() {
           <button
             type="button"
             disabled
-            title="Compare audits — coming soon"
+            title="Compare reviews — coming soon"
             className="inline-flex items-center gap-2 px-4 py-3 rounded-[11px] bg-white border border-pa-line text-[13.5px] font-bold text-pa-body opacity-60 cursor-not-allowed"
           >
             <Copy className="h-4 w-4" />
-            Compare audits
+            Compare reviews
           </button>
           <Link
             to="/proposals/review"
             className="inline-flex items-center gap-2 px-5 py-3 rounded-[11px] bg-kpmg-blue text-white text-[13.5px] font-bold shadow-accent hover:bg-kpmg-mediumblue transition-colors"
           >
             <Plus className="h-4 w-4" />
-            New audit
+            New review
           </Link>
         </div>
       </div>
@@ -178,7 +178,7 @@ export function DashboardPage() {
       {/* STAT TILES */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatTile
-          label="Total audits"
+          label="Total reviews"
           value={counts.total}
           hint="all-time"
         />
@@ -199,10 +199,10 @@ export function DashboardPage() {
         />
       </div>
 
-      {/* RECENT AUDITS */}
+      {/* RECENT REVIEWS */}
       <div className="rounded-2xl bg-white border border-pa-line overflow-hidden">
         <div className="px-5 md:px-6 py-4 border-b border-pa-line-soft">
-          <div className="text-[15px] font-bold text-pa-ink">Recent audits</div>
+          <div className="text-[15px] font-bold text-pa-ink">Recent reviews</div>
           <div className="text-[12px] text-pa-muted mt-0.5">
             Click any row to open the readiness index
           </div>
@@ -210,9 +210,9 @@ export function DashboardPage() {
 
         {recent.length === 0 ? (
           <div className="text-center py-10 px-6">
-            <p className="text-sm text-pa-muted mb-4">No audits yet.</p>
+            <p className="text-sm text-pa-muted mb-4">No reviews yet.</p>
             <Link to="/proposals/review" className="btn-primary inline-flex">
-              <Plus className="h-4 w-4" /> Run your first audit
+              <Plus className="h-4 w-4" /> Run your first review
             </Link>
           </div>
         ) : (

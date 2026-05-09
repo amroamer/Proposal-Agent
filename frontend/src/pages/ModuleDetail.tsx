@@ -251,7 +251,7 @@ export function ModuleDetailPage() {
           <ArrowLeft className="h-3.5 w-3.5" /> Back to overview
         </Link>
         <div className="p-4 rounded-lg bg-pa-cream-soft border border-pa-line text-sm text-pa-body">
-          Could not find criterion {criterionIdx} in this audit.
+          Could not find criterion {criterionIdx} in this review.
         </div>
       </div>
     );
@@ -261,7 +261,7 @@ export function ModuleDetailPage() {
     <div className="grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] gap-5 lg:gap-6">
       {/* LEFT RAIL */}
       <aside className="min-w-0 space-y-3.5">
-        {/* Active audit file — KPMG-blue filled card */}
+        {/* Active proposal file — KPMG-blue filled card */}
         <div
           className="rounded-2xl p-4 text-white relative overflow-hidden"
           style={{ background: "linear-gradient(135deg, #00338D 0%, #005EB8 100%)" }}
@@ -272,7 +272,7 @@ export function ModuleDetailPage() {
           />
           <div className="relative flex items-center gap-2 text-[10.5px] font-bold tracking-[0.1em] opacity-90 mb-1">
             <FileIcon className="h-3.5 w-3.5" />
-            <span>ACTIVE AUDIT FILE</span>
+            <span>ACTIVE PROPOSAL FILE</span>
           </div>
           <div className="relative text-[13px] font-bold font-mono tracking-[-0.2px] truncate">
             {data.source_filename}

@@ -88,7 +88,7 @@ async def extract_metadata(
     if not raw:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
     try:
-        meta = await review_service.extract_metadata(
+        meta, extracted_text, kind = await review_service.extract_metadata(
             filename=file.filename, file_bytes=raw, db=db, user=user,
         )
     except file_parser_service.UnsupportedFile as e:
@@ -109,7 +109,13 @@ async def extract_metadata(
             status_code=502,
             detail=f"AI service unavailable: {e}",
         )
-    return MetadataExtractResponse(metadata=ReviewMetadata(**meta))
+    return MetadataExtractResponse(
+        metadata=ReviewMetadata(**meta),
+        extracted_text=extracted_text,
+        source_kind=kind,
+        source_filename=file.filename,
+        source_size_bytes=len(raw),
+    )
 
 
 @router.post(

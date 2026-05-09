@@ -40,7 +40,7 @@ export function SignInPage() {
         Welcome back.
       </h2>
       <p className="text-[13.5px] text-pa-muted mb-8">
-        Continue your audit work or start a fresh assessment.
+        Continue your review work or start a fresh assessment.
       </p>
 
       {apiError && (

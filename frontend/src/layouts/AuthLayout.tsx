@@ -35,7 +35,7 @@ export function AuthLayout() {
 
         <div className="relative max-w-[420px]">
           <h1 className="text-3xl md:text-[34px] font-bold leading-tight tracking-[-0.5px] mb-4">
-            Audit every proposal before it leaves the room.
+            Review every proposal before it leaves the room.
           </h1>
           <p className="text-[14px] text-white/90 leading-relaxed">
             Diagnostic logic, strategic prompts, and a readiness index — built for the partners

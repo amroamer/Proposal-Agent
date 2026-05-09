@@ -174,7 +174,7 @@ export function ReviewDetailPage() {
       {/* LEFT RAIL */}
       <aside className="min-w-0 space-y-3.5">
         <div className="rounded-2xl bg-white border border-pa-line p-4">
-          <div className="eyebrow-muted mb-2.5">Active audit file</div>
+          <div className="eyebrow-muted mb-2.5">Active proposal file</div>
           <div className="flex items-center gap-2.5">
             <div className="w-[30px] h-[30px] rounded-lg bg-pa-accent-soft text-kpmg-blue flex items-center justify-center shrink-0">
               <FileIcon className="h-3.5 w-3.5" />
@@ -253,7 +253,7 @@ export function ReviewDetailPage() {
         <button
           type="button"
           disabled
-          title="Compare audits — coming soon"
+          title="Compare reviews — coming soon"
           className="w-full flex items-center justify-center gap-2 px-3.5 py-3 rounded-xl border border-pa-line text-[11.5px] font-bold tracking-[0.06em] uppercase text-pa-muted opacity-60 cursor-not-allowed"
         >
           Compare with another →
@@ -300,7 +300,7 @@ export function ReviewDetailPage() {
           <div className="relative mt-5 flex flex-wrap items-center gap-3 justify-between">
             <p className="text-[13px] text-pa-body leading-relaxed max-w-[640px]">
               {overall == null
-                ? "Audit completed. Review individual modules below."
+                ? "Review completed. Review individual modules below."
                 : overall < 7
                   ? "Critical \"Must Fix\" issues detected. Remediation is required prior to submission."
                   : overall < 8
@@ -388,7 +388,7 @@ export function ReviewDetailPage() {
           <div className="rounded-2xl bg-white border border-pa-line p-6 text-sm text-pa-muted">
             <p className="mb-2 font-bold text-pa-ink">Free-form review</p>
             <p>
-              This audit was run as a free-form review without a framework — there are no
+              This review was run free-form without a framework — there are no
               per-criterion scores to display. The full review markdown is below.
             </p>
             <article className="prose prose-sm max-w-none mt-4">

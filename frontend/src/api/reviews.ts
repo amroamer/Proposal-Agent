@@ -89,16 +89,96 @@ export async function createReview(input: CreateReviewInput): Promise<ReviewDeta
   return res.data;
 }
 
-export async function extractMetadata(file: File): Promise<ReviewMetadata> {
+export interface ExtractMetadataResponse {
+  metadata: ReviewMetadata;
+  extracted_text: string;
+  source_kind: string;
+  source_filename: string;
+  source_size_bytes: number;
+}
+
+/**
+ * Upload a file and get the LLM-extracted metadata back together with
+ * the parsed text and file shape — enough to build MD/JSON derivative
+ * downloads on the upload page without a second backend round-trip.
+ */
+export async function extractMetadata(file: File): Promise<ExtractMetadataResponse> {
   const fd = new FormData();
   fd.append("file", file);
   // axios auto-sets Content-Type with the boundary; manual override breaks it.
-  const res = await api.post<{ metadata: ReviewMetadata }>(
+  const res = await api.post<ExtractMetadataResponse>(
     "/reviews/extract-metadata",
     fd,
     { timeout: 5 * 60 * 1000 },
   );
-  return res.data.metadata;
+  return res.data;
+}
+
+/** Build a Markdown rendering of an extracted file. */
+export function buildExtractedMarkdown(
+  payload: ExtractMetadataResponse,
+): string {
+  const m = payload.metadata;
+  const lines: string[] = [];
+  lines.push(`# ${payload.source_filename || "Document"}`);
+  lines.push("");
+  lines.push(`> ${(payload.source_kind || "").toUpperCase()} · ${(payload.source_size_bytes / (1024 * 1024)).toFixed(2)} MB · extracted by Proposal Agent`);
+  lines.push("");
+  if (m.document_title || m.client_name || m.submission_date || m.purpose_and_scope || m.client_mandatory_requirements) {
+    lines.push("## Metadata");
+    lines.push("");
+    if (m.document_title) lines.push(`- **Document title:** ${m.document_title}`);
+    if (m.client_name) lines.push(`- **Client:** ${m.client_name}`);
+    if (m.submission_date) lines.push(`- **Submission date:** ${m.submission_date}`);
+    if (m.purpose_and_scope) {
+      lines.push(`- **Purpose & scope:**`);
+      lines.push("");
+      lines.push(m.purpose_and_scope);
+    }
+    if (m.client_mandatory_requirements) {
+      lines.push("");
+      lines.push(`- **Client mandatory requirements:**`);
+      lines.push("");
+      lines.push(m.client_mandatory_requirements);
+    }
+    lines.push("");
+  }
+  lines.push("## Extracted content");
+  lines.push("");
+  lines.push(payload.extracted_text || "_No readable text extracted._");
+  return lines.join("\n");
+}
+
+/** Build a JSON rendering of an extracted file (stable, machine-readable). */
+export function buildExtractedJson(payload: ExtractMetadataResponse): string {
+  return JSON.stringify(
+    {
+      schema_version: "1.0",
+      source: {
+        filename: payload.source_filename,
+        kind: payload.source_kind,
+        size_bytes: payload.source_size_bytes,
+      },
+      metadata: payload.metadata,
+      extracted_text: payload.extracted_text,
+      extracted_at: new Date().toISOString(),
+    },
+    null,
+    2,
+  );
+}
+
+/** Trigger a browser save of arbitrary text content as a downloadable file. */
+export function downloadTextAs(filename: string, content: string, mime: string): void {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 export async function listReviews(limit = 50, offset = 0): Promise<ReviewListResponse> {

@@ -79,12 +79,12 @@ export function ReviewsListPage() {
       {/* HERO */}
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
-          <div className="eyebrow mb-2">Audit log</div>
+          <div className="eyebrow mb-2">Review log</div>
           <h1 className="text-3xl md:text-[32px] font-bold text-pa-ink tracking-[-0.6px] leading-tight">
             Review history
           </h1>
           <p className="mt-2 text-sm text-pa-muted max-w-[640px]">
-            Past AI audits of proposals you uploaded. Click any row to open the readiness index.
+            Past AI reviews of proposals you uploaded. Click any row to open the readiness index.
           </p>
         </div>
         <Link
@@ -92,7 +92,7 @@ export function ReviewsListPage() {
           className="inline-flex items-center gap-2 px-5 py-3 rounded-[11px] bg-kpmg-blue text-white text-[13.5px] font-bold shadow-accent hover:bg-kpmg-mediumblue transition-colors"
         >
           <Plus className="h-4 w-4" />
-          New audit
+          New review
         </Link>
       </div>
 
@@ -114,7 +114,7 @@ export function ReviewsListPage() {
       {items && items.length === 0 && (
         <div className="rounded-2xl bg-white border border-pa-line text-center py-12 px-6">
           <Inbox className="h-10 w-10 text-pa-muted/60 mx-auto mb-3" />
-          <h3 className="font-bold text-pa-ink">No audits yet</h3>
+          <h3 className="font-bold text-pa-ink">No reviews yet</h3>
           <p className="text-sm text-pa-muted mt-1 mb-4">
             Upload a proposal to run your first readiness diagnostic.
           </p>
@@ -123,7 +123,7 @@ export function ReviewsListPage() {
             className="inline-flex items-center gap-2 px-5 py-2.5 rounded-[11px] bg-kpmg-blue text-white text-sm font-bold shadow-accent hover:bg-kpmg-mediumblue transition-colors"
           >
             <Sparkles className="h-4 w-4" />
-            Run your first audit
+            Run your first review
           </Link>
         </div>
       )}

@@ -67,6 +67,13 @@ class ReviewListResponse(BaseModel):
 
 class MetadataExtractResponse(BaseModel):
     metadata: ReviewMetadata
+    # Extras used by the upload page to build MD / JSON derivative downloads
+    # client-side without a second backend round-trip. Empty strings when
+    # the parser returned nothing (e.g. legacy callers ignore the fields).
+    extracted_text: str = ""
+    source_kind: str = ""
+    source_filename: str = ""
+    source_size_bytes: int = 0
 
 
 class OllamaModel(BaseModel):
