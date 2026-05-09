@@ -173,6 +173,42 @@ export async function openReviewFile(id: number): Promise<boolean> {
   return true;
 }
 
+/** Download a generated readiness report (PDF or XLSX) for a review.
+ *  Returns the filename it saved as, or null if the request failed. */
+export async function exportReviewReport(
+  id: number,
+  format: "pdf" | "xlsx",
+): Promise<string | null> {
+  const res = await api.get(`/reviews/${id}/export`, {
+    params: { format },
+    responseType: "blob",
+    // Surface 4xx as a thrown axios error so the caller sees the message.
+  });
+
+  // Recover server-supplied filename; fall back to a sensible default.
+  let filename = `review-${id}.${format}`;
+  const cd = res.headers["content-disposition"];
+  if (typeof cd === "string") {
+    const star = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+    if (star) {
+      try { filename = decodeURIComponent(star[1]); } catch { /* keep fallback */ }
+    } else {
+      const plain = /filename="?([^";]+)"?/i.exec(cd);
+      if (plain) filename = plain[1];
+    }
+  }
+
+  const url = URL.createObjectURL(res.data as Blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return filename;
+}
+
 // -------- SSE Streaming types & client --------
 
 export interface StreamStartEvent {

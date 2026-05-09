@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
-  ArrowRight, Sparkles, Download, ExternalLink, FileText as FileIcon,
+  ArrowRight, Sparkles, Download, ExternalLink, FileSpreadsheet, FileText as FileIcon,
   CheckCircle, AlertTriangle, Clock, Users, BookOpen, Zap, Scale, Star, Workflow,
   type LucideIcon,
 } from "lucide-react";
@@ -9,6 +9,7 @@ import {
   getReview,
   downloadReviewFile,
   openReviewFile,
+  exportReviewReport,
   type ReviewDetail,
 } from "../api/reviews";
 import { extractApiError } from "../api/client";
@@ -100,6 +101,22 @@ export function ReviewDetailPage() {
       setFileError(extractApiError(e));
     } finally {
       setFileBusy("");
+    }
+  };
+
+  const [exportBusy, setExportBusy] = useState<"" | "pdf" | "xlsx">("");
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  const onExport = async (format: "pdf" | "xlsx") => {
+    if (!id) return;
+    setExportBusy(format);
+    setExportError(null);
+    try {
+      await exportReviewReport(Number(id), format);
+    } catch (e) {
+      setExportError(extractApiError(e));
+    } finally {
+      setExportBusy("");
     }
   };
 
@@ -290,15 +307,35 @@ export function ReviewDetailPage() {
                     ? "Submission-ready, with edits. Address warnings before sending."
                     : "Submission-ready. Light polish recommended."}
             </p>
-            <button
-              type="button"
-              disabled
-              title="Export PDF — coming soon"
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-[10px] bg-kpmg-blue text-white text-[12.5px] font-bold shadow-accent-soft opacity-80 cursor-not-allowed"
-            >
-              <Download className="h-3.5 w-3.5" />
-              Export PDF
-            </button>
+            <div className="flex flex-col items-end gap-1.5">
+              <div className="flex gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => onExport("xlsx")}
+                  disabled={exportBusy !== ""}
+                  title="Export the review as an Excel workbook"
+                  className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-[10px] border border-pa-line bg-white text-pa-ink text-[12.5px] font-bold hover:bg-pa-cream disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                >
+                  <FileSpreadsheet className="h-3.5 w-3.5" />
+                  {exportBusy === "xlsx" ? "Building…" : "Export Excel"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onExport("pdf")}
+                  disabled={exportBusy !== ""}
+                  title="Export the review as a PDF report"
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-[10px] bg-kpmg-blue text-white text-[12.5px] font-bold shadow-accent-soft hover:bg-kpmg-mediumblue disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  {exportBusy === "pdf" ? "Building…" : "Export PDF"}
+                </button>
+              </div>
+              {exportError && (
+                <div className="text-[11px] text-pa-danger leading-tight max-w-[280px] text-right">
+                  {exportError}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="relative mt-5 grid grid-cols-1 sm:grid-cols-3 gap-2.5">

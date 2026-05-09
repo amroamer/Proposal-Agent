@@ -374,3 +374,57 @@ async def get_review_file(
         "Content-Length": str(len(row.source_bytes)),
     }
     return Response(content=row.source_bytes, media_type=media_type, headers=headers)
+
+
+_EXPORT_MIME = {
+    "pdf":  "application/pdf",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+}
+
+
+@router.get(
+    "/{review_id}/export",
+    summary="Export the readiness review as a PDF or XLSX report",
+    responses={
+        200: {"description": "Generated report file"},
+        404: {"description": "Review not found"},
+        400: {"description": "Unsupported format"},
+    },
+)
+async def export_review(
+    review_id: int,
+    db: DbSession,
+    user: CurrentUser,
+    format: str = Query("pdf", regex="^(pdf|xlsx)$"),
+):
+    """Build a downloadable readiness report from a stored review.
+
+    Both formats are derived from the same parsed criteria so they stay in
+    sync. PDF is the presentable report; XLSX is the analytical workbook
+    (Summary / Criteria / Full review sheets).
+    """
+    row = await review_service.get_for_user(db, user=user, review_id=review_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Review not found.")
+
+    # Import on first use — keeps reportlab out of the hot path for the rest
+    # of the API and lets the container start fast even if reportlab fails to
+    # import (it would only break this one route).
+    from app.services import review_report_service
+
+    if format == "pdf":
+        content = review_report_service.build_pdf_report(row)
+    else:
+        content = review_report_service.build_xlsx_report(row)
+
+    filename = review_report_service.report_filename(row, format)
+    encoded = url_quote(filename, safe="")
+    headers = {
+        "Content-Disposition": f"attachment; filename*=UTF-8''{encoded}",
+        "Content-Length": str(len(content)),
+    }
+    return Response(
+        content=content,
+        media_type=_EXPORT_MIME[format],
+        headers=headers,
+    )
