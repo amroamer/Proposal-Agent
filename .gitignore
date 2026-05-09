@@ -26,3 +26,6 @@ db/data/
 
 # Claude Code worktree scratch state
 .claude/worktrees/
+
+# Local DB dumps (restore on server with `psql -f <file>`)
+backups/
