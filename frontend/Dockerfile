@@ -1,21 +1,38 @@
-FROM node:20-alpine AS builder
+# Proposal Agent - frontend
+# Multi-stage build:
+#   - dev:        Vite dev server with hot reload (used by local docker-compose)
+#   - build:      Produces static assets in /app/dist
+#   - production: nginx serving the built assets (used by kpmg-infra)
+#
+# Vite is built with base: "/ProposalAgent/" (set in vite.config.ts), so the
+# HTML references assets at /ProposalAgent/assets/... The inner nginx maps
+# that prefix back to the real file root with `alias`.
 
+# -------------------------------------------------------------
+# Stage: dev - local development with hot reload
+# -------------------------------------------------------------
+FROM node:20-alpine AS dev
 WORKDIR /app
-
 COPY package.json package-lock.json* ./
 RUN npm install --no-audit --no-fund || npm install
+EXPOSE 5173
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
 
+# -------------------------------------------------------------
+# Stage: build - produce static assets
+# -------------------------------------------------------------
+FROM node:20-alpine AS build
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm install --no-audit --no-fund || npm install
 COPY . .
-
 RUN npm run build
 
-# Final stage: minimal image that keeps a baked copy of dist outside the
-# /app/dist mount point. On startup we sync into /app/dist (the shared
-# volume), so a `compose build && compose up` always serves fresh assets
-# even when the named volume persists across runs.
-FROM node:20-alpine
-
-WORKDIR /app
-COPY --from=builder /app/dist ./dist-source
-
-CMD ["sh", "-c", "mkdir -p /app/dist && rm -rf /app/dist/* && cp -r /app/dist-source/. /app/dist/ && echo 'Frontend dist deployed to volume' && tail -f /dev/null"]
+# -------------------------------------------------------------
+# Stage: production - nginx serves the static build
+# -------------------------------------------------------------
+FROM nginx:alpine AS production
+COPY --from=build /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
