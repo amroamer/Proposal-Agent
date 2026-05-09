@@ -325,7 +325,7 @@ _METADATA_EXAMPLE = (
     '"client_mandatory_requirements":"- Vision statement\\n- 3-year roadmap"}'
 )
 
-METADATA_USER_TMPL = (
+_METADATA_PROMPT_PREAMBLE = (
     "Extract metadata from the document below. Fields:\n"
     "- document_title: title of the proposal (usually on slide 1).\n"
     "- client_name: the target client (e.g. \"Ministry of Interior\").\n"
@@ -335,10 +335,20 @@ METADATA_USER_TMPL = (
     "string with newlines between bullets.\n\n"
     "Use empty strings for fields you cannot find. Never invent values.\n\n"
     "Example output (illustrative shape only — do not copy values):\n"
-    f"{_METADATA_EXAMPLE}\n\n"
-    "Document:\n```\n{doc_text}\n```\n\n"
-    "Now output ONLY the JSON object for the document above."
+    + _METADATA_EXAMPLE
+    + "\n\nDocument:\n```\n"
 )
+
+
+def _build_metadata_prompt(doc_text: str) -> str:
+    """Concatenate prompt parts so the JSON example's braces don't clash with
+    Python's str.format() placeholder syntax (the previous template-with-format
+    raised KeyError: '"document_title"' on the literal example braces)."""
+    return (
+        _METADATA_PROMPT_PREAMBLE
+        + doc_text
+        + "\n```\n\nNow output ONLY the JSON object for the document above."
+    )
 
 
 # How many characters of doc_text to send to the LLM for metadata extraction.
@@ -536,7 +546,7 @@ async def extract_metadata(
     # Baseline always succeeds. Enrich with the LLM where we can.
     baseline = _regex_metadata_baseline(doc_text, filename)
     sliced = _slice_for_metadata(doc_text)
-    prompt = METADATA_USER_TMPL.format(doc_text=sliced)
+    prompt = _build_metadata_prompt(sliced)
 
     model = ollama_service.DEFAULT_MODEL
     options: dict = {}
