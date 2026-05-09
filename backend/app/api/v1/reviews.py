@@ -92,10 +92,16 @@ async def extract_metadata(
             filename=file.filename, file_bytes=raw, db=db, user=user,
         )
     except file_parser_service.UnsupportedFile as e:
+        logger.warning("extract-metadata 415: %s (file=%r size=%d)", e, file.filename, len(raw))
         raise HTTPException(status_code=415, detail=str(e))
     except file_parser_service.FileTooLarge as e:
+        logger.warning("extract-metadata 413: %s (file=%r size=%d)", e, file.filename, len(raw))
         raise HTTPException(status_code=413, detail=str(e))
     except ValueError as e:
+        logger.warning(
+            "extract-metadata 422: %s (file=%r size=%d type=%s)",
+            e, file.filename, len(raw), file.content_type,
+        )
         raise HTTPException(status_code=422, detail=str(e))
     except ollama_service.OllamaError as e:
         logger.exception("Ollama failure during metadata extract")

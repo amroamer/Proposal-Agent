@@ -1,8 +1,12 @@
 """Standardized error envelope and exception handlers."""
+import logging
+
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import ORJSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+
+logger = logging.getLogger(__name__)
 
 
 def _envelope(code: str, message: str, details=None):
@@ -24,6 +28,14 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        # Log details of validation failures so we can diagnose 422s where
+        # the request body never reached the endpoint (e.g. malformed
+        # multipart with no boundary, missing required form fields).
+        logger.warning(
+            "422 validation_error on %s %s: errors=%r ct=%r",
+            request.method, request.url.path, exc.errors(),
+            request.headers.get("content-type"),
+        )
         return ORJSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             content=_envelope(
