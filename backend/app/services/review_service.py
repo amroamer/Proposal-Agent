@@ -27,6 +27,7 @@ from app.services.structured_finding import (
     SourceCoverage,
     StructuredFinding,
     StructuredFindingPayload,
+    detect_consistency_warnings,
     llm_finding_schema,
     verdict_from_score,
 )
@@ -393,7 +394,8 @@ def _build_structured_criterion_prompt(
         "   - `extra_recommendations`: []\n"
         "4. Do NOT use `extra_recommendations` for fixes that belong to a specific gap. Every fix that ties to an observed problem goes inside that gap's `recommendation` field.\n"
         "5. If you cannot find any strengths, return `strengths: []`. Do NOT invent generic strengths just to fill the array. Same for `gaps`.\n"
-        "6. The `score` you give MUST match the verdict band and the substance of the summary. A 'highly professional, comprehensive' summary cannot have score < 7."
+        "6. The `score` you give MUST match the verdict band and the substance of the summary. A 'highly professional, comprehensive' summary cannot have score < 7.\n"
+        "7. Each `slides_referenced` array MUST contain UNIQUE slide numbers in ascending order. Do NOT repeat the same slide number within one item's array — '[63, 63, 64]' is wrong; '[63, 64]' is right. The server will dedupe but a clean array is preferred."
     )
 
 
@@ -1085,7 +1087,39 @@ async def run_review_streaming(
             # the input to specific sections, this reflects the
             # narrowed slide range. The coverage chip in the UI uses
             # this to flag citations outside the reviewed window.
+            #
+            # Decorate with what the LLM ACTUALLY consumed (#1-A): if
+            # Ollama's prompt_eval_count is materially less than our
+            # estimate-from-chars, the model's context window silently
+            # truncated the prompt. Bilingual content runs ~3 chars
+            # per token; we threshold at 70% to leave headroom for
+            # tokenizer differences across models.
+            criterion_coverage.tokens_consumed = result.prompt_eval_count
+            if result.prompt_eval_count is not None and criterion_coverage.chars_sent > 0:
+                expected_tokens = criterion_coverage.chars_sent / 3.0
+                criterion_coverage.silent_truncation = (
+                    result.prompt_eval_count < expected_tokens * 0.7
+                )
+                if criterion_coverage.silent_truncation:
+                    logger.warning(
+                        "criterion %d (%s): SILENT TRUNCATION — "
+                        "sent ~%d est. tokens, model consumed %d "
+                        "(%.0f%% of estimate)",
+                        idx, name,
+                        int(expected_tokens), result.prompt_eval_count,
+                        100.0 * result.prompt_eval_count / max(expected_tokens, 1),
+                    )
             finding.coverage = criterion_coverage
+
+            # Server-side cross-check (#4-A): detect verdict-vs-summary
+            # and score-vs-gaps contradictions. We do NOT auto-correct
+            # the score — the human reviewer needs to see the warning.
+            finding.consistency_warnings = detect_consistency_warnings(finding)
+            if finding.consistency_warnings:
+                logger.info(
+                    "criterion %d (%s) consistency warnings: %s",
+                    idx, name, finding.consistency_warnings,
+                )
 
             findings.append(finding.model_dump(mode="json"))
 

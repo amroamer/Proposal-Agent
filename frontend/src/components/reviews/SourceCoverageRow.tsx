@@ -86,6 +86,21 @@ export function SourceCoverageRow({ finding }: SourceCoverageRowProps) {
             Truncated
           </span>
         )}
+        {coverage.silent_truncation && (
+          <span
+            className="ml-1 inline-flex items-center px-1 py-0 rounded bg-pa-danger-soft text-pa-danger text-[10px] font-bold uppercase tracking-wider"
+            data-testid="coverage-silent-truncation"
+            title={
+              `The model's context window was too small for what we sent. ` +
+              `Estimated ~${Math.round(coverage.chars_sent / 3)} tokens, ` +
+              `model only consumed ${coverage.tokens_consumed ?? "?"}. ` +
+              `The 'Reviewed' chip overstates what the model actually saw — ` +
+              `treat the result as based on a fraction of the input.`
+            }
+          >
+            Cut by model
+          </span>
+        )}
       </span>
 
       <span

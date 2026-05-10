@@ -63,6 +63,11 @@ export interface SourceCoverage {
   chars_sent: number;
   chars_total: number;
   char_cap_hit: boolean;
+  /** Token count Ollama reports it actually consumed for the prompt.
+   *  Compared to estimate-from-chars to detect silent truncation. */
+  tokens_consumed?: number | null;
+  /** True when the model's context window silently chopped the prompt. */
+  silent_truncation?: boolean;
 }
 
 /** Structured per-criterion finding produced by the streaming review
@@ -78,6 +83,10 @@ export interface StructuredFinding {
   gaps: GapItem[];
   extra_recommendations: string[];
   coverage?: SourceCoverage;
+  /** Server-detected inconsistencies between score / summary / gaps.
+   *  Non-empty list = flag to the human reviewer that the model's
+   *  output may be self-contradictory. NOT a hard error. */
+  consistency_warnings?: string[];
 }
 
 export interface ReviewDetail {

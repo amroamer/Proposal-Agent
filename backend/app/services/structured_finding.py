@@ -22,6 +22,32 @@ from pydantic import BaseModel, Field, field_validator
 Verdict = Literal["strong", "adequate", "weak"]
 
 
+def _dedupe_slide_refs(v: list[int]) -> list[int]:
+    """Pydantic validator helper: drop duplicate slide numbers and
+    sort ascending. Models (especially small ones) sometimes emit the
+    same slide twice in a single `slides_referenced` array — that
+    visually pollutes the citation chips and conveys no extra info.
+
+    Negative / zero / None entries are silently dropped — slide
+    numbers are 1-indexed; non-positive values would only come from
+    the model hallucinating.
+    """
+    if not v:
+        return []
+    out: list[int] = []
+    seen: set[int] = set()
+    for n in v:
+        try:
+            n_int = int(n)
+        except (TypeError, ValueError):
+            continue
+        if n_int <= 0 or n_int in seen:
+            continue
+        seen.add(n_int)
+        out.append(n_int)
+    return sorted(out)
+
+
 class StrengthItem(BaseModel):
     """One observed strength. `slides_referenced` carries slide numbers
     cited from the proposal — rendered as clickable chips by the UI."""
@@ -29,6 +55,11 @@ class StrengthItem(BaseModel):
     title: str = Field("", max_length=200)
     detail: str = Field("", max_length=2000)
     slides_referenced: list[int] = Field(default_factory=list)
+
+    @field_validator("slides_referenced")
+    @classmethod
+    def _slides_dedupe(cls, v: list[int]) -> list[int]:
+        return _dedupe_slide_refs(v)
 
 
 class GapItem(BaseModel):
@@ -40,6 +71,11 @@ class GapItem(BaseModel):
     recommendation: str = Field("", max_length=1000)
     severity: Literal["high", "medium", "low"] = "medium"
     slides_referenced: list[int] = Field(default_factory=list)
+
+    @field_validator("slides_referenced")
+    @classmethod
+    def _slides_dedupe(cls, v: list[int]) -> list[int]:
+        return _dedupe_slide_refs(v)
 
 
 class SourceCoverage(BaseModel):
@@ -63,6 +99,17 @@ class SourceCoverage(BaseModel):
     chars_sent: int = Field(ge=0, default=0)
     chars_total: int = Field(ge=0, default=0)
     char_cap_hit: bool = False
+    # Token count Ollama reports it actually consumed for the prompt.
+    # Compared against an estimate-from-chars to detect silent
+    # truncation by the model's context window — e.g. gemma4 (8K
+    # context) silently chops a 70K-token prompt to fit. None when
+    # the call hadn't happened yet at coverage-compute time (legacy
+    # paths and the first-pass coverage before the LLM is called).
+    tokens_consumed: int | None = None
+    # True when tokens_consumed is materially less than estimated
+    # tokens for chars_sent — the model's context window cut the
+    # input. The UI surfaces this as a red badge on the coverage row.
+    silent_truncation: bool = False
 
 
 class StructuredFinding(BaseModel):
@@ -85,6 +132,12 @@ class StructuredFinding(BaseModel):
     gaps: list[GapItem] = Field(default_factory=list)
     extra_recommendations: list[str] = Field(default_factory=list)
     coverage: SourceCoverage = Field(default_factory=SourceCoverage)
+    # Server-set inconsistency warnings detected after the LLM
+    # responded. We do NOT auto-correct the score — the human
+    # reviewer needs to know the model was confused, not have the
+    # output silently rewritten. Each entry is a short, plain-text
+    # explanation. Empty list = no detected contradictions.
+    consistency_warnings: list[str] = Field(default_factory=list)
 
     @field_validator("score")
     @classmethod
@@ -128,6 +181,75 @@ class StructuredFindingPayload(BaseModel):
     the streaming runner logs a warning and discards."""
 
     finding: StructuredFinding
+
+
+_POSITIVE_LANGUAGE = (
+    "highly professional", "comprehensive", "well-structured", "well structured",
+    "excellent", "robust", "exceptional", "outstanding", "best practice",
+    "best-in-class", "strong", "thorough", "polished",
+)
+_NEGATIVE_LANGUAGE = (
+    "poor", "weak", "lacking", "insufficient", "missing", "absent",
+    "inadequate", "fails to", "does not address",
+)
+
+
+def detect_consistency_warnings(finding: "StructuredFinding") -> list[str]:
+    """Server-side cross-check of the model's structured output.
+
+    Detects the specific failure modes we saw on small models:
+      1. Score in 'weak' band (<5) with a summary using positive
+         language → model wrote a positive summary then picked an
+         inconsistent score.
+      2. Score in 'strong' band (≥7) with one or more high-severity
+         gaps OR ≥3 gaps total → claim of strength contradicted by
+         the listed gaps.
+      3. Score in 'strong' band with summary using negative language.
+      4. Empty strengths AND empty gaps with score ≠ 0 — model
+         claimed a score without listing any evidence.
+
+    These are SOFT signals: the warning surfaces to the human reviewer
+    so they don't trust the score blindly. We do NOT auto-correct.
+    """
+    warnings: list[str] = []
+    score = finding.score
+    summary_lc = (finding.summary or "").lower()
+    n_gaps_high = sum(1 for g in finding.gaps if g.severity == "high")
+    n_gaps_total = len(finding.gaps)
+    n_strengths = len(finding.strengths)
+
+    if score < 5.0 and any(p in summary_lc for p in _POSITIVE_LANGUAGE):
+        warnings.append(
+            f"Score {score:.1f} (weak) but summary uses positive language. "
+            "Verify whether the score reflects what was observed."
+        )
+
+    if score >= 7.0 and n_gaps_high > 0:
+        warnings.append(
+            f"Score {score:.1f} (strong) but {n_gaps_high} high-severity "
+            "gap(s) listed. A high-severity gap usually means the criterion "
+            "is NOT submission-ready — score may be inflated."
+        )
+
+    if score >= 7.0 and n_gaps_total >= 3:
+        warnings.append(
+            f"Score {score:.1f} (strong) but {n_gaps_total} gaps listed. "
+            "Verify whether the score reflects the volume of gaps."
+        )
+
+    if score >= 7.0 and any(p in summary_lc for p in _NEGATIVE_LANGUAGE):
+        warnings.append(
+            f"Score {score:.1f} (strong) but summary uses negative "
+            "language. Verify whether the score reflects the summary."
+        )
+
+    if score > 0 and n_strengths == 0 and n_gaps_total == 0:
+        warnings.append(
+            f"Score {score:.1f} but no strengths or gaps listed. The "
+            "model gave a score without supporting evidence."
+        )
+
+    return warnings
 
 
 def verdict_from_score(score: float | None) -> Verdict:

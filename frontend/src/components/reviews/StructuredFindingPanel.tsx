@@ -1,4 +1,4 @@
-import { Check, AlertTriangle, ChevronRight } from "lucide-react";
+import { Check, AlertTriangle, ChevronRight, ShieldAlert } from "lucide-react";
 import clsx from "clsx";
 import type { StructuredFinding, GapItem, Verdict } from "../../api/reviews";
 import { SourceCoverageRow } from "./SourceCoverageRow";
@@ -95,6 +95,31 @@ export function StructuredFindingPanel({
           <p className="text-[13.5px] text-pa-body leading-relaxed">
             {finding.summary}
           </p>
+        )}
+
+        {/* Consistency warnings — server-detected contradictions
+            between score, summary, and gaps. We surface these
+            visibly so the human reviewer doesn't trust a self-
+            contradicting result. We do NOT auto-correct the score. */}
+        {finding.consistency_warnings && finding.consistency_warnings.length > 0 && (
+          <div
+            className="mt-3 rounded-lg bg-pa-warning-soft border border-pa-warning/30 p-3"
+            data-testid="consistency-warnings"
+            role="alert"
+          >
+            <div className="flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-[0.08em] text-pa-warning mb-1.5">
+              <ShieldAlert className="h-3.5 w-3.5" />
+              Self-contradictory output detected
+            </div>
+            <ul className="space-y-1 text-[12px] text-pa-body leading-relaxed">
+              {finding.consistency_warnings.map((w, i) => (
+                <li key={i} className="flex gap-1.5">
+                  <span className="text-pa-warning">•</span>
+                  <span>{w}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
 
         {/* Source coverage — what the AI actually saw vs cited. Sits
