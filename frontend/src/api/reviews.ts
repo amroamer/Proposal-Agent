@@ -36,6 +36,50 @@ export interface ReviewSummary {
   created_at: string;
 }
 
+/** One-of-three quality verdicts derived from the score. Mirrors
+ *  `Verdict` in backend/app/services/structured_finding.py. */
+export type Verdict = "strong" | "adequate" | "weak";
+
+export interface StrengthItem {
+  title: string;
+  detail: string;
+  slides_referenced: number[];
+}
+
+export interface GapItem {
+  title: string;
+  detail: string;
+  recommendation: string;
+  severity: "high" | "medium" | "low";
+  slides_referenced: number[];
+}
+
+/** How much of the source document the model actually saw when this
+ *  finding was produced. Server-set, NOT trusted from the LLM. */
+export interface SourceCoverage {
+  slides_total: number;
+  slides_sent_min: number;
+  slides_sent_max: number | null;
+  chars_sent: number;
+  chars_total: number;
+  char_cap_hit: boolean;
+}
+
+/** Structured per-criterion finding produced by the streaming review
+ *  runner (V019). Empty `findings` array on a review means it's a
+ *  legacy run — the UI falls back to parsing `review_output`. */
+export interface StructuredFinding {
+  criterion_index: number;
+  criterion_name: string;
+  score: number;
+  verdict: Verdict;
+  summary: string;
+  strengths: StrengthItem[];
+  gaps: GapItem[];
+  extra_recommendations: string[];
+  coverage?: SourceCoverage;
+}
+
 export interface ReviewDetail {
   id: number;
   created_by: number;
@@ -51,6 +95,7 @@ export interface ReviewDetail {
   framework_ids: number[];
   disabled_criteria: string[];
   extracted_metadata: ReviewMetadata;
+  findings: StructuredFinding[];
   created_at: string;
 }
 

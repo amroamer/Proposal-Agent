@@ -3,6 +3,8 @@ import { CSS } from "@dnd-kit/utilities";
 import { ChevronRight, GripVertical, Trash2 } from "lucide-react";
 import clsx from "clsx";
 import type { FrameworkCriterion } from "../../api/frameworks";
+import { EvidenceSourceSelect } from "./EvidenceSourceSelect";
+import { WILDCARD } from "../../lib/sections";
 
 interface CriterionCardProps {
   id: string;
@@ -41,16 +43,23 @@ export function CriterionCard({
     transition,
   };
 
+  // Default to active for legacy criteria stored before the toggle existed.
+  const isActive = criterion.active !== false;
+
   return (
     <div
       ref={setNodeRef}
       style={style}
       className={clsx(
-        "rounded-lg border bg-white",
+        "rounded-lg border bg-white transition-opacity",
         isDragging
           ? "border-kpmg-blue/40 shadow-raise opacity-80 z-50"
-          : "border-kpmg-gray-100",
+          : isActive
+            ? "border-kpmg-gray-100"
+            : "border-dashed border-kpmg-gray-200 bg-kpmg-gray-50",
+        !isActive && !isDragging && "opacity-70",
       )}
+      data-criterion-active={isActive}
     >
       {/* Collapsed header row */}
       <div
@@ -72,19 +81,34 @@ export function CriterionCard({
         )}
 
         {/* Number badge */}
-        <span className="h-6 w-6 rounded-full bg-kpmg-blue text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
+        <span
+          className={clsx(
+            "h-6 w-6 rounded-full text-white text-xs font-bold flex items-center justify-center flex-shrink-0",
+            isActive ? "bg-kpmg-blue" : "bg-kpmg-gray-300",
+          )}
+        >
           {index + 1}
         </span>
 
         {/* Name EN */}
-        <span className="font-semibold text-kpmg-blue text-sm truncate min-w-0">
+        <span
+          className={clsx(
+            "font-semibold text-sm truncate min-w-0",
+            isActive
+              ? "text-kpmg-blue"
+              : "text-kpmg-gray-400 line-through decoration-kpmg-gray-300",
+          )}
+        >
           {criterion.name_en || criterion.name_ar || "Untitled"}
         </span>
 
         {/* Name AR (if present) */}
         {criterion.name_ar && (
           <span
-            className="text-sm text-kpmg-gray-400 font-arabic truncate min-w-0"
+            className={clsx(
+              "text-sm font-arabic truncate min-w-0",
+              isActive ? "text-kpmg-gray-400" : "text-kpmg-gray-300 line-through",
+            )}
             dir="rtl"
           >
             {criterion.name_ar}
@@ -96,11 +120,58 @@ export function CriterionCard({
           {criterion.description_en}
         </span>
 
+        {/* Inactive badge — only shown when off, in the same slot the
+            group badge would otherwise occupy. Keeps the row compact. */}
+        {!isActive && (
+          <span className="ml-auto text-[10px] uppercase tracking-wider text-kpmg-gray-500 bg-kpmg-gray-100 px-2 py-0.5 rounded-full flex-shrink-0 font-semibold">
+            Inactive
+          </span>
+        )}
+
         {/* Group badge */}
-        {criterion.group && (
+        {isActive && criterion.group && (
           <span className="ml-auto text-[10px] uppercase tracking-wider text-kpmg-purple bg-kpmg-purple/10 px-2 py-0.5 rounded-full flex-shrink-0 font-semibold">
             {criterion.group}
           </span>
+        )}
+
+        {/* Active toggle — visible from the collapsed header so the
+            operator can flip a criterion on/off without expanding it.
+            Wrapped in a label so the click target is generous; stops
+            propagation so it doesn't toggle the expand state. */}
+        {canEdit && (
+          <label
+            onClick={(e) => e.stopPropagation()}
+            className={clsx(
+              !isActive && !criterion.group ? "" : "ml-1",
+              "inline-flex items-center cursor-pointer flex-shrink-0",
+            )}
+            title={isActive ? "Deactivate criterion" : "Activate criterion"}
+          >
+            <input
+              type="checkbox"
+              role="switch"
+              className="sr-only peer"
+              checked={isActive}
+              onChange={(e) => onChange({ active: e.target.checked })}
+              data-testid={`criterion-active-toggle-${id}`}
+              aria-label={isActive ? "Deactivate criterion" : "Activate criterion"}
+            />
+            <span
+              className={clsx(
+                "relative inline-block h-4 w-7 rounded-full transition-colors",
+                isActive ? "bg-kpmg-blue" : "bg-kpmg-gray-300",
+                "peer-focus-visible:ring-2 peer-focus-visible:ring-kpmg-mediumblue peer-focus-visible:ring-offset-1",
+              )}
+            >
+              <span
+                className={clsx(
+                  "absolute top-0.5 h-3 w-3 rounded-full bg-white shadow-sm transition-transform",
+                  isActive ? "translate-x-3.5" : "translate-x-0.5",
+                )}
+              />
+            </span>
+          </label>
         )}
 
         {/* Expand chevron */}
@@ -217,6 +288,14 @@ export function CriterionCard({
               />
             </div>
           </div>
+
+          {/* Evidence Source (Phase 5) — sits between prompt instruction
+              and Section/Group, per spec. */}
+          <EvidenceSourceSelect
+            value={criterion.evidence_source ?? [WILDCARD]}
+            onChange={(next) => onChange({ evidence_source: next })}
+            disabled={!canEdit}
+          />
 
           {/* Group + Delete row */}
           <div className="flex items-end gap-3 pt-1">

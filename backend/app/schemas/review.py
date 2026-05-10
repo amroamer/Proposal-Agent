@@ -54,6 +54,10 @@ class ReviewDetail(BaseModel):
     framework_ids: list[int] = Field(default_factory=list)
     disabled_criteria: list[str] = Field(default_factory=list)
     extracted_metadata: ReviewMetadata = Field(default_factory=ReviewMetadata)
+    # Structured per-criterion findings (V019). Empty list for legacy
+    # rows; the criterion detail page falls back to Markdown parsing
+    # of `review_output` when this is empty.
+    findings: list[dict] = Field(default_factory=list)
     created_at: datetime
 
     class Config:

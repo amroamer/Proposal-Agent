@@ -93,6 +93,22 @@ export function ProposalReviewPage() {
   const [streamDone, setStreamDone] = useState<StreamDoneEvent | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  // Wall-clock timer for the diagnostic run. Started the instant the
+  // operator clicks Run AI Diagnostic (so it captures upload + parse
+  // + cold-model-load time, NOT just streaming time) and frozen when
+  // the run finishes. We keep the live elapsed in state so the UI
+  // re-renders every tick.
+  const [runStartedAt, setRunStartedAt] = useState<number | null>(null);
+  const [runElapsedMs, setRunElapsedMs] = useState<number>(0);
+  useEffect(() => {
+    if (runStartedAt == null) return;
+    if (!running) return;
+    const id = setInterval(() => {
+      setRunElapsedMs(Date.now() - runStartedAt);
+    }, 250);
+    return () => clearInterval(id);
+  }, [runStartedAt, running]);
+
   // User's saved default model (for the header badge).
   const [defaultModel, setDefaultModel] = useState<string | null>(null);
 
@@ -183,6 +199,10 @@ export function ProposalReviewPage() {
       const fw = frameworkDetails[id];
       if (!fw) continue;
       for (const c of fw.criteria) {
+        // Inactive criteria are hidden from the review screen entirely
+        // — they neither show in the consolidated list nor get sent to
+        // the model. Re-activate from the framework editor to use them.
+        if (c.active === false) continue;
         const displayName = c.name_en || c.name_ar || "";
         if (!displayName || seen.has(displayName)) continue;
         seen.add(displayName);
@@ -242,6 +262,12 @@ export function ProposalReviewPage() {
     setStreamMeta(null);
     setStreamDone(null);
     setRunning(true);
+    // Snapshot the moment of click so the timer starts BEFORE any
+    // server activity. The interval in the useEffect above takes over
+    // updating `runElapsedMs`.
+    const startedAt = Date.now();
+    setRunStartedAt(startedAt);
+    setRunElapsedMs(0);
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -314,6 +340,13 @@ export function ProposalReviewPage() {
       }
     } finally {
       setRunning(false);
+      // Freeze the timer at the actual end-of-run moment. The live
+      // ticker stopped because `running` flipped false; we just record
+      // the final elapsed value so the "Completed in Xm Ys" display
+      // shows wall-clock time including the upload + parse window.
+      if (runStartedAt != null) {
+        setRunElapsedMs(Date.now() - runStartedAt);
+      }
       abortRef.current = null;
     }
   };
@@ -489,7 +522,7 @@ export function ProposalReviewPage() {
               <input
                 type="date"
                 className="input-field"
-                value={metadata.submission_date}
+                value={/^\d{4}-\d{2}-\d{2}$/.test(metadata.submission_date) ? metadata.submission_date : ""}
                 onChange={e => setMetadata({ ...metadata, submission_date: e.target.value })}
                 disabled={extractingMeta}
               />
@@ -608,7 +641,30 @@ export function ProposalReviewPage() {
       </div>
 
       {/* FOOTER ACTIONS */}
-      <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2.5">
+      <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2.5">
+        {/* Wall-clock elapsed timer — visible the moment Run is
+            clicked and stays visible after completion so the operator
+            has a record of how long the run took. Live during running,
+            frozen after. */}
+        {(running || runElapsedMs > 0) && (
+          <div
+            className="sm:mr-auto inline-flex items-center gap-2 px-3 py-2 rounded-[11px] bg-pa-cream border border-pa-line text-[12.5px]"
+            data-testid="diagnostic-timer"
+            aria-live="polite"
+          >
+            {running ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-kpmg-blue" />
+            ) : (
+              <Sparkles className="h-3.5 w-3.5 text-pa-success" />
+            )}
+            <span className="text-pa-muted font-bold uppercase tracking-[0.06em] text-[10.5px]">
+              {running ? "Elapsed" : "Completed in"}
+            </span>
+            <span className="font-mono tabular-nums font-bold text-pa-ink">
+              {formatElapsed(runElapsedMs)}
+            </span>
+          </div>
+        )}
         {running ? (
           <button
             type="button"
@@ -664,6 +720,7 @@ export function ProposalReviewPage() {
           running={running}
           metadata={metadata}
           navigate={navigate}
+          runElapsedMs={runElapsedMs}
         />
       )}
 
@@ -841,62 +898,100 @@ function MetadataField({
   );
 }
 
-// ---------- Extraction progress bar ----------
+// ---------- Elapsed-time formatter ----------
+//
+// Used by the diagnostic timer chip on the run button row and in the
+// readiness report header. Renders milliseconds as one of:
+//   "0.0s"    (under 1 second)
+//   "12s"     (under a minute)
+//   "1m 23s"  (a minute or more)
+// Negative / NaN inputs render as "0s" so the UI never shows broken
+// content if the timer is read before being set.
+function formatElapsed(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return "0s";
+  if (ms < 1000) return `${(ms / 1000).toFixed(1)}s`;
+  const sec = Math.floor(ms / 1000);
+  if (sec < 60) return `${sec}s`;
+  return `${Math.floor(sec / 60)}m ${sec % 60}s`;
+}
 
-const EXTRACTION_STAGES = [
-  { label: "Parsing document...", pct: 15 },
-  { label: "Analyzing content structure...", pct: 35 },
-  { label: "Extracting title & client info...", pct: 55 },
-  { label: "Identifying requirements...", pct: 75 },
-  { label: "Finalizing metadata...", pct: 90 },
-];
+
+// ---------- Extraction progress (honest indicator) ----------
+//
+// The previous version of this component faked a 5-stage progress bar
+// that walked through "Parsing document → ... → Finalizing metadata"
+// on an 8-second timer regardless of backend state, parking at 90%
+// after 40s. That was a lie: the actual extract_metadata call is one
+// HTTP round-trip that the frontend has zero telemetry into. Once the
+// fake bar parked at 90% there was no way for the operator to tell
+// "still working" from "actually hung."
+//
+// This version drops the fake percentage and shows:
+//   - an indeterminate animated bar (true to the fact that we don't
+//     know how far along we are)
+//   - an elapsed-time counter so the operator can see the call is
+//     still alive and decide whether to wait
+//   - a "this can take a few minutes for large decks / cold models"
+//     reassurance after 30s so it doesn't FEEL stuck
 
 function ExtractionProgress() {
-  const [stageIdx, setStageIdx] = useState(0);
-  const [pct, setPct] = useState(0);
+  const [elapsedMs, setElapsedMs] = useState(0);
 
   useEffect(() => {
-    // Animate initial rise to first stage
-    const riseTimer = setTimeout(() => setPct(EXTRACTION_STAGES[0].pct), 100);
-
-    // Advance through stages on intervals
-    const interval = setInterval(() => {
-      setStageIdx(prev => {
-        const next = Math.min(prev + 1, EXTRACTION_STAGES.length - 1);
-        setPct(EXTRACTION_STAGES[next].pct);
-        return next;
-      });
-    }, 8000); // ~8s per stage
-
-    return () => {
-      clearTimeout(riseTimer);
-      clearInterval(interval);
-    };
+    const start = Date.now();
+    const t = setInterval(() => setElapsedMs(Date.now() - start), 250);
+    return () => clearInterval(t);
   }, []);
 
-  const stage = EXTRACTION_STAGES[stageIdx];
+  const elapsedSec = Math.floor(elapsedMs / 1000);
+  const slow = elapsedSec >= 30;
 
   return (
-    <div className="rounded-lg border border-kpmg-blue/20 bg-kpmg-blue/5 p-4 space-y-3">
-      <div className="flex items-center gap-2">
-        <Loader2 className="h-4 w-4 animate-spin text-kpmg-blue" />
-        <span className="text-sm font-semibold text-kpmg-blue">
-          AI extracting document metadata
+    <div
+      className="rounded-lg border border-kpmg-blue/20 bg-kpmg-blue/5 p-4 space-y-3"
+      data-testid="extraction-progress"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <Loader2 className="h-4 w-4 animate-spin text-kpmg-blue shrink-0" />
+          <span className="text-sm font-semibold text-kpmg-blue truncate">
+            AI extracting document metadata
+          </span>
+        </div>
+        <span
+          className="text-[11.5px] font-mono tabular-nums text-kpmg-gray-500 shrink-0"
+          aria-label="elapsed time"
+        >
+          {elapsedSec >= 60
+            ? `${Math.floor(elapsedSec / 60)}m ${elapsedSec % 60}s`
+            : `${elapsedSec}s`}
         </span>
       </div>
 
-      {/* Progress bar */}
-      <div className="w-full bg-kpmg-gray-200 rounded-full h-2 overflow-hidden">
+      {/* Indeterminate progress bar — slides a 30%-wide block across the
+          track so the operator sees motion without a fake percentage. */}
+      <div className="w-full bg-kpmg-gray-200 rounded-full h-2 overflow-hidden relative">
         <div
-          className="h-full bg-kpmg-blue rounded-full transition-all duration-1000 ease-out"
-          style={{ width: `${pct}%` }}
+          className="absolute h-full w-1/3 bg-kpmg-blue rounded-full"
+          style={{
+            animation: "pa-indeterminate 1.4s ease-in-out infinite",
+          }}
         />
+        <style>
+          {`@keyframes pa-indeterminate {
+            0%   { left: -33%; }
+            100% { left: 100%; }
+          }`}
+        </style>
       </div>
 
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-kpmg-gray-500">{stage.label}</span>
-        <span className="text-xs font-semibold text-kpmg-blue">{pct}%</span>
-      </div>
+      <p className="text-xs text-kpmg-gray-500 leading-relaxed">
+        {slow
+          ? "Still working. Large decks (100+ MB) plus a cold LLM can take 2–4 minutes. " +
+            "If this exceeds 5 minutes, hit Replace and try again."
+          : "Parsing the file and asking the LLM to extract title, client and scope. " +
+            "This is one round-trip — no progress percentage is available."}
+      </p>
     </div>
   );
 }
@@ -910,6 +1005,7 @@ function ReadinessReport({
   running,
   metadata,
   navigate,
+  runElapsedMs,
 }: {
   criteriaResults: CriterionResult[];
   streamMeta: StreamStartEvent | null;
@@ -917,6 +1013,10 @@ function ReadinessReport({
   running: boolean;
   metadata: ReviewMetadata;
   navigate: ReturnType<typeof useNavigate>;
+  /** Wall-clock elapsed time for the whole run, captured by the
+   *  parent page from the moment Run AI Diagnostic was clicked.
+   *  Live-updating during the run, frozen after `done` event. */
+  runElapsedMs: number;
 }) {
   const [expandedCard, setExpandedCard] = useState<number | null>(null);
 
@@ -953,7 +1053,21 @@ function ReadinessReport({
             {streamMeta && (
               <p className="text-xs text-kpmg-gray-400 mt-1">
                 {streamMeta.model} · {streamMeta.framework_names.join(" + ")}
-                {streamDone && ` · ${(streamDone.total_duration_ms / 1000).toFixed(1)}s`}
+                {/* Wall-clock time from button click to done.
+                    During run we show "Elapsed Xs" updating live; once
+                    the stream is done we show "Total Xs" frozen. We
+                    prefer the parent-tracked wall-clock over
+                    streamDone.total_duration_ms because the latter
+                    only measures streaming time, missing upload/parse. */}
+                {runElapsedMs > 0 && (
+                  <>
+                    {" · "}
+                    <span className="font-mono tabular-nums font-bold text-kpmg-blue">
+                      {running ? "Elapsed " : "Total "}
+                      {formatElapsed(runElapsedMs)}
+                    </span>
+                  </>
+                )}
               </p>
             )}
           </div>

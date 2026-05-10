@@ -8,6 +8,13 @@ export interface FrameworkCriterion {
   prompt_instruction_en: string;
   prompt_instruction_ar: string;
   group: string;
+  /** Phase-5: list of canonical section_keys, or ["*"] for whole proposal.
+   * Optional on the wire so legacy clients keep working; the backend
+   * defaults missing values to ["*"]. */
+  evidence_source?: string[];
+  /** When false, the criterion is skipped by the review runner.
+   * Optional on the wire — backend defaults to true. */
+  active?: boolean;
 }
 
 export interface FrameworkSummary {

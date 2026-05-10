@@ -18,12 +18,26 @@ services:
     restart: unless-stopped
     networks: [pa_net]
 
-  # One-shot container that builds the frontend static assets into the shared volume.
+  # One-shot container that publishes the frontend static assets into
+  # the shared volume. The Dockerfile's production stage copies the
+  # built bundle to /usr/share/nginx/html; we mount the named volume at
+  # /app/dist and copy the bundle into it on every container start, so
+  # rebuilds reliably propagate new JS/CSS to nginx without needing the
+  # operator to delete the volume.
   frontend_build:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: pa_frontend_build
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        echo "[frontend_build] publishing bundle to /app/dist…"
+        rm -rf /app/dist/* /app/dist/.[!.]* 2>/dev/null || true
+        cp -a /usr/share/nginx/html/. /app/dist/
+        echo "[frontend_build] published; serving on :80 too"
+        exec /docker-entrypoint.sh nginx -g 'daemon off;'
     volumes:
       - frontend_dist:/app/dist
     networks: [pa_net]
@@ -35,7 +49,15 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       - REDIS_URL=redis://redis:6379/0
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      # Use the Docker bridge gateway IP directly to reach host
+      # services. host.docker.internal on this machine resolves to an
+      # IPv6 address that hits a DIFFERENT Ollama instance (one that's
+      # bound to 0.0.0.0 with only 2 models pulled), while 172.20.0.1
+      # routes through the host's loopback to the full-models Ollama
+      # bound to 127.0.0.1. If you ever wipe and recreate the bridge
+      # network with a different subnet, update this IP to match
+      # `docker network inspect proposal-agent_pa_net` -> Gateway.
+      - OLLAMA_BASE_URL=http://172.20.0.1:11434
       - ENVIRONMENT=development
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -51,23 +73,34 @@ services:
     restart: unless-stopped
     networks: [pa_net]
 
-  # worker disabled: app.worker module not implemented yet
-  # worker:
-  #   build: ./backend
-  #   container_name: pa_worker
-  #   command: celery -A app.worker.celery_app worker --loglevel=info --concurrency=2
-  #   env_file: .env
-  #   environment:
-  #     - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-  #     - REDIS_URL=redis://redis:6379/0
-  #     - OLLAMA_BASE_URL=http://host.docker.internal:11434
-  #   extra_hosts:
-  #     - "host.docker.internal:host-gateway"
-  #   depends_on:
-  #     - backend
-  #     - redis
-  #   restart: unless-stopped
-  #   networks: [pa_net]
+  worker:
+    build: ./backend
+    container_name: pa_worker
+    # `app.worker` re-exports the celery instance; concurrency=4 gives
+    # the proposal-review pipeline 4 in-flight section extractions
+    # against the host Ollama at any time.
+    command: celery -A app.worker worker --loglevel=info --concurrency=4
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      - REDIS_URL=redis://redis:6379/0
+      # Use the Docker bridge gateway IP directly to reach host
+      # services. host.docker.internal on this machine resolves to an
+      # IPv6 address that hits a DIFFERENT Ollama instance (one that's
+      # bound to 0.0.0.0 with only 2 models pulled), while 172.20.0.1
+      # routes through the host's loopback to the full-models Ollama
+      # bound to 127.0.0.1. If you ever wipe and recreate the bridge
+      # network with a different subnet, update this IP to match
+      # `docker network inspect proposal-agent_pa_net` -> Gateway.
+      - OLLAMA_BASE_URL=http://172.20.0.1:11434
+      - ENVIRONMENT=development
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - backend
+      - redis
+    restart: unless-stopped
+    networks: [pa_net]
 
   migrations:
     build: ./backend

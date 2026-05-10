@@ -28,6 +28,12 @@ class ProposalReview(Base):
     disabled_criteria:  Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
     document_class:     Mapped[str]       = mapped_column(String(32), nullable=False, default="proposal")
 
+    # Added by V019. Structured per-criterion result from the streaming
+    # runner — list of StructuredFinding objects. Empty list for legacy
+    # rows; the criterion detail page falls back to the Markdown parser
+    # when this is empty.
+    findings:          Mapped[list[dict]] = mapped_column(JSONB, nullable=False, default=list)
+
     # Added by V013. Stored as BYTEA, deferred so list/get queries don't drag
     # tens of MB across the wire — only loaded when the file-download endpoint
     # explicitly accesses it via session.refresh(row, attribute_names=...).

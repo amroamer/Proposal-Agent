@@ -15,6 +15,7 @@ import re
 import time
 from typing import AsyncGenerator
 
+from pydantic import ValidationError
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +23,27 @@ from app.models.proposal_review import ProposalReview
 from app.models.review_framework import ReviewFramework
 from app.models.user import User
 from app.services import file_parser_service, llm_pref_service, ollama_service
+from app.services.structured_finding import (
+    SourceCoverage,
+    StructuredFinding,
+    StructuredFindingPayload,
+    llm_finding_schema,
+    verdict_from_score,
+)
+from app.services.proposal_review.section_splitter import (
+    ProposalSections,
+    SectionContent,
+    split_pptx,
+)
+from app.services.proposal_review.section_mapping import (
+    SECTION_KEYS,
+    arabic_label,
+    english_label,
+)
+from app.services.proposal_review.group_routing import (
+    WILDCARD,
+    is_wildcard,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +57,21 @@ DEFAULT_SYSTEM_PROMPT = (
     "and be candid about weaknesses. Never invent content not present in the document."
 )
 
-# Hard cap on document text we send to the model. Defensive trim so a
-# 200-slide deck doesn't blow the request even with large-context models.
-MAX_DOC_CHARS = 60_000
+# Hard cap on document text we send to the model. The original 60 KB
+# cap was set when 8K-context models were the only option and was
+# intended as defensive trim against runaway documents.
+#
+# Modern caps come from the model's `num_ctx` setting (Ollama
+# truncates internally to fit) — see user_llm_preferences.options.
+# This char cap is now an outer ceiling that should only kick in for
+# pathologically large documents (1000+ slide decks, scanned PDFs).
+# 400 KB ≈ 100K–130K tokens depending on language, comfortably above
+# qwen2.5:32b's 128K context window.
+#
+# Concrete consequence: a typical 150–200 slide consulting proposal
+# (~250–350 KB extracted) now passes through this cap untouched. The
+# model's `num_ctx` becomes the real constraint.
+MAX_DOC_CHARS = 400_000
 
 PROMPT_PREVIEW_CHARS = 200
 
@@ -66,12 +100,16 @@ def _build_framework_prompt(
 ) -> str:
     doc, note = _truncated_doc(doc_text)
     criteria_text = ""
-    for i, c in enumerate(framework.criteria or [], start=1):
+    counter = 0
+    for c in framework.criteria or []:
+        if c.get("active", True) is False:
+            continue
         name = (c.get("name_en") or c.get("name") or "").strip()
         instr = (c.get("prompt_instruction_en") or c.get("prompt_instruction") or "").strip()
         if not name or not instr:
             continue
-        criteria_text += f"\n## {i}. {name}\n{instr}\n"
+        counter += 1
+        criteria_text += f"\n## {counter}. {name}\n{instr}\n"
 
     return (
         f"# Source document\nFilename: {filename}\n\n"
@@ -110,6 +148,11 @@ def _build_multiframework_prompt(
     counter = 0
     for fw in frameworks:
         for c in fw.criteria or []:
+            # Inactive criteria are dropped entirely — same rule as the
+            # streaming runner, so the prompt the model sees never
+            # mentions a deactivated criterion.
+            if c.get("active", True) is False:
+                continue
             name = (c.get("name_en") or c.get("name") or "").strip()
             instr = (c.get("prompt_instruction_en") or c.get("prompt_instruction") or "").strip()
             if not name or not instr:
@@ -141,6 +184,217 @@ def _build_multiframework_prompt(
     model_to_use = (frameworks[0].model if frameworks else "") or ollama_service.DEFAULT_MODEL
 
     return system_prompt, user_prompt, model_to_use
+
+
+def _resolve_evidence_source(criterion: dict) -> list[str]:
+    """Read `evidence_source` off a criterion. Defaults to wildcard
+    (whole proposal) for criteria stored before the field existed or
+    that left it unset. The Pydantic validator on FrameworkCriterion
+    enforces shape on writes; here we just normalise reads."""
+    raw = criterion.get("evidence_source")
+    if not raw or not isinstance(raw, list):
+        return [WILDCARD]
+    cleaned: list[str] = []
+    for v in raw:
+        if isinstance(v, str) and v:
+            cleaned.append(v)
+    return cleaned or [WILDCARD]
+
+
+def _assemble_criterion_text(
+    *,
+    full_extracted_text: str,
+    sections: ProposalSections | None,
+    evidence_source: list[str],
+) -> tuple[str, SourceCoverage, list[str]]:
+    """Build the document slice this criterion gets evaluated against.
+
+    Returns (criterion_text, coverage, used_section_keys) where:
+      - criterion_text: the prompt-ready string the model will see
+      - coverage: per-criterion SourceCoverage (slides_total = whole
+        deck, slides_sent_min/max counted within criterion_text)
+      - used_section_keys: which canonical sections were actually
+        included (after intersecting evidence_source with what the
+        splitter could find). Empty list means "wildcard / whole doc."
+
+    Behaviour:
+      - evidence_source == ["*"] OR sections is None  →  whole proposal.
+        sections is None when the source isn't a pptx (we can't reliably
+        section-split docx/pdf yet).
+      - evidence_source has canonical keys → concatenate raw_text from
+        those sections in canonical order. Sections missing from the
+        deck are silently skipped (the splitter logs a warning).
+      - If the requested sections don't exist in the deck (none match)
+        → fall back to whole proposal so the model isn't sent an empty
+        prompt. Logged as a warning.
+    """
+    if is_wildcard(evidence_source) or sections is None:
+        return full_extracted_text, _compute_source_coverage(full_extracted_text), []
+
+    parts: list[str] = []
+    used: list[str] = []
+    for key in SECTION_KEYS:  # canonical order
+        if key not in evidence_source:
+            continue
+        sec = sections.sections.get(key)
+        if sec is None or not sec.raw_text.strip():
+            continue
+        used.append(key)
+        # Re-inject `## Slide N` markers via the section's slides so
+        # the coverage detector + the model both see slide numbers.
+        slide_chunks = [
+            f"## Slide {s.slide_number}\n{s.text}" for s in sec.slides if s.text.strip()
+        ]
+        section_blob = (
+            f"\n\n# Section: {english_label(key)}"
+            + (f" / {arabic_label(key)}" if arabic_label(key) else "")
+            + f"\n\n" + "\n\n".join(slide_chunks)
+        )
+        parts.append(section_blob)
+
+    if not parts:
+        logger.warning(
+            "evidence_source %r did not match any section in this deck — "
+            "falling back to whole proposal",
+            evidence_source,
+        )
+        return full_extracted_text, _compute_source_coverage(full_extracted_text), []
+
+    criterion_text = "\n".join(parts).strip()
+    return criterion_text, _compute_source_coverage(criterion_text), used
+
+
+def _compute_source_coverage(extracted_text: str) -> SourceCoverage:
+    """How much of `extracted_text` did we actually send to the model?
+
+    `extracted_text` already has `## Slide N` (or `## Page N`) markers
+    inserted by file_parser_service. We count those in the FULL text
+    and in the TRUNCATED slice the model receives, so the UI can show
+    'reviewed slides 1–38 of 177' and flag citations outside that range.
+    """
+    chars_total = len(extracted_text or "")
+    char_cap_hit = chars_total > MAX_DOC_CHARS
+    chars_sent = min(chars_total, MAX_DOC_CHARS)
+    sent_slice = (extracted_text or "")[:chars_sent]
+
+    # Count slide / page markers ('## Slide N' / '## Page N') in the
+    # full doc and in the slice the model received. Highest number in
+    # the slice = slides_sent_max; full count = slides_total.
+    marker_re = re.compile(r"^##\s+(?:Slide|Page)\s+(\d+)\b", re.MULTILINE)
+    all_nums = [int(m.group(1)) for m in marker_re.finditer(extracted_text or "")]
+    sent_nums = [int(m.group(1)) for m in marker_re.finditer(sent_slice)]
+    return SourceCoverage(
+        slides_total=max(all_nums) if all_nums else 0,
+        slides_sent_min=min(sent_nums) if sent_nums else 1,
+        slides_sent_max=max(sent_nums) if sent_nums else None,
+        chars_sent=chars_sent,
+        chars_total=chars_total,
+        char_cap_hit=char_cap_hit,
+    )
+
+
+def _structured_to_markdown(finding: StructuredFinding) -> str:
+    """Render a StructuredFinding to Markdown for the legacy export path
+    (Excel / PDF builders read review_output, not findings). The shape
+    matches what the previous prose-based prompts produced so existing
+    exports keep working without re-templating."""
+    lines: list[str] = [f"Score: {finding.score}/10", ""]
+    if finding.summary:
+        lines += ["**Summary**", finding.summary, ""]
+    if finding.strengths:
+        lines += ["**Strengths**"]
+        for s in finding.strengths:
+            citation = (
+                f" _(slide {', '.join(str(n) for n in s.slides_referenced)})_"
+                if s.slides_referenced
+                else ""
+            )
+            lines.append(f"- **{s.title}**{citation} — {s.detail}")
+        lines.append("")
+    if finding.gaps:
+        lines += ["**Gaps & Recommendations**"]
+        for g in finding.gaps:
+            citation = (
+                f" _(slide {', '.join(str(n) for n in g.slides_referenced)})_"
+                if g.slides_referenced
+                else ""
+            )
+            lines.append(
+                f"- **[{g.severity.upper()}] {g.title}**{citation} — {g.detail} "
+                f"_Recommendation:_ {g.recommendation}"
+            )
+        lines.append("")
+    if finding.extra_recommendations:
+        lines += ["**Other recommendations**"]
+        for r in finding.extra_recommendations:
+            lines.append(f"- {r}")
+        lines.append("")
+    return "\n".join(lines).strip()
+
+
+def _build_structured_criterion_prompt(
+    criterion: dict,
+    doc_text: str,
+    filename: str,
+    metadata: dict | None = None,
+) -> str:
+    """Prompt that asks the model for a JSON StructuredFindingPayload.
+
+    Schema enforcement is via Ollama's `format` parameter (set to
+    StructuredFindingPayload.model_json_schema()) so the model can't
+    drift from the shape — we don't repeat the field types here, only
+    the *meaning* the model should put in each.
+    """
+    doc, note = _truncated_doc(doc_text)
+    name = (criterion.get("name_en") or criterion.get("name") or "").strip()
+    instr = (
+        criterion.get("prompt_instruction_en") or criterion.get("prompt_instruction") or ""
+    ).strip()
+
+    meta_block = ""
+    if metadata:
+        meta_parts = []
+        if metadata.get("document_title"):
+            meta_parts.append(f"- Title: {metadata['document_title']}")
+        if metadata.get("client_name"):
+            meta_parts.append(f"- Client: {metadata['client_name']}")
+        if metadata.get("purpose_and_scope"):
+            meta_parts.append(f"- Scope: {metadata['purpose_and_scope']}")
+        if meta_parts:
+            meta_block = "# Document metadata\n" + "\n".join(meta_parts) + "\n\n"
+
+    return (
+        f"# Source document\n"
+        f"Filename: {filename}\n"
+        f"Slide / page markers in the text below look like '## Slide 12' or '## Page 3'.\n"
+        f"When you cite evidence, set `slides_referenced` to the integer slide / page numbers you took the evidence from.\n\n"
+        f"```\n{doc}\n```{note}\n\n"
+        f"{meta_block}"
+        f"# Evaluation criterion\n## {name}\n{instr}\n\n"
+        "# How to fill the JSON\n"
+        "- `criterion_index`: leave as 0 — the server replaces it.\n"
+        "- `criterion_name`: copy the criterion name above verbatim.\n"
+        "- `score` (0–10): \n"
+        "    9–10 excellent, 7–8 good, 5–6 adequate, 3–4 weak, 1–2 critical fail.\n"
+        "- `verdict`: 'strong' if score≥7, 'adequate' if 5≤score<7, else 'weak'.\n"
+        "- `summary`: ONE sentence on overall standing.\n"
+        "- `strengths`: list of {title, detail, slides_referenced}. Each is a CONCRETE, VERIFIABLE claim from the document, not a marketing line. `title` is 3–8 words, `detail` is 1–2 sentences. Cite the slide(s) the evidence came from.\n"
+        "- `gaps`: list of {title, detail, recommendation, severity, slides_referenced}. `severity` is 'high' (must fix to submit), 'medium' (notable issue), or 'low' (polish). `recommendation` is one imperative sentence: 'Add a KPI table on slide 8.'\n"
+        "- `extra_recommendations`: bullets that don't tie to a specific gap.\n\n"
+        "# Hard rules — read carefully\n"
+        "1. EVERY strength and gap MUST cite at least one slide number in `slides_referenced` from the actual `## Slide N` markers above. If you cannot cite a slide, do not include the item.\n"
+        "2. Quote or paraphrase ONLY content that appears in the document above. NEVER invent a section, claim, or number that you did not see.\n"
+        "3. If you cannot find concrete evidence to evaluate this criterion (the document is short, missing the relevant section, or the content does not address the criterion), return:\n"
+        "   - `score`: 0\n"
+        "   - `verdict`: 'weak'\n"
+        "   - `summary`: 'Insufficient evidence in the reviewed window to evaluate this criterion.'\n"
+        "   - `strengths`: []\n"
+        "   - `gaps`: []\n"
+        "   - `extra_recommendations`: []\n"
+        "4. Do NOT use `extra_recommendations` for fixes that belong to a specific gap. Every fix that ties to an observed problem goes inside that gap's `recommendation` field.\n"
+        "5. If you cannot find any strengths, return `strengths: []`. Do NOT invent generic strengths just to fill the array. Same for `gaps`.\n"
+        "6. The `score` you give MUST match the verdict band and the substance of the summary. A 'highly professional, comprehensive' summary cannot have score < 7."
+    )
 
 
 def _build_single_criterion_prompt(
@@ -684,6 +938,30 @@ async def run_review_streaming(
         filename, kind, len(extracted_text), [f.id for f in frameworks],
     )
 
+    # 1b. For .pptx, run the section splitter once. The result is reused
+    # by every criterion's _assemble_criterion_text call so we only pay
+    # the python-pptx cost once per review.
+    # docx/pdf are not section-split yet (no canonical heading scheme),
+    # so we set sections=None and those criteria silently fall back to
+    # whole-proposal even if `evidence_source` is set. The coverage
+    # chip will reflect this honestly.
+    sections: ProposalSections | None = None
+    if kind == "pptx":
+        try:
+            sections = split_pptx(file_bytes)
+            logger.info(
+                "streaming review: section_splitter found %d sections "
+                "(%d expected canonical, %d unknown markers)",
+                len(sections.sections),
+                len(SECTION_KEYS) - len(sections.missing_sections),
+                len(sections.unknown_markers),
+            )
+        except Exception as e:  # noqa: BLE001 — splitter is best-effort
+            logger.warning(
+                "streaming review: section_splitter failed (%s) — "
+                "criteria with evidence_source will fall back to whole proposal", e,
+            )
+
     # 2. Build criteria list (deduplicate, honour disabled set)
     disabled_set = {d.strip() for d in (disabled_criteria or []) if d.strip()}
     system_prompt = (
@@ -694,6 +972,12 @@ async def run_review_streaming(
     seen: set[str] = set()
     for fw in frameworks:
         for c in fw.criteria or []:
+            # Inactive criteria are hidden from the review flow entirely:
+            # the operator deactivates them in the framework editor and
+            # they neither appear in the streamed result nor consume a
+            # model call.
+            if c.get("active", True) is False:
+                continue
             name = (c.get("name_en") or c.get("name") or "").strip()
             instr = (c.get("prompt_instruction_en") or c.get("prompt_instruction") or "").strip()
             if not name or not instr:
@@ -722,8 +1006,15 @@ async def run_review_streaming(
     }
 
     # 5. Process each criterion sequentially
-    results: list[tuple[int, str, str, int]] = []  # (index, name, output, duration_ms)
+    # `results` keeps the markdown output (for legacy export), `findings`
+    # keeps the structured JSON the new UI renders from. Each criterion
+    # contributes one entry to each.
+    results: list[tuple[int, str, str, int]] = []  # (index, name, markdown, duration_ms)
+    findings: list[dict] = []
     total_start = time.time()
+
+    # Schema the LLM is held to — excludes `coverage` (server-computed).
+    structured_schema = llm_finding_schema()
 
     for idx, criterion in enumerate(criteria_list):
         name = (criterion.get("name_en") or criterion.get("name") or "").strip()
@@ -735,26 +1026,85 @@ async def run_review_streaming(
         }
 
         try:
-            prompt = _build_single_criterion_prompt(
-                criterion, extracted_text, filename, metadata
+            # Per-criterion document slice — honours the framework
+            # editor's `evidence_source` selection. ["*"] = whole
+            # proposal; otherwise concatenate the canonical sections
+            # the operator picked. coverage reflects what THIS
+            # criterion actually saw.
+            evidence_source = _resolve_evidence_source(criterion)
+            criterion_text, criterion_coverage, used_sections = _assemble_criterion_text(
+                full_extracted_text=extracted_text,
+                sections=sections,
+                evidence_source=evidence_source,
             )
+            logger.info(
+                "criterion %d (%s) COVERAGE: evidence_source=%s used_sections=%s "
+                "chars_sent=%d chars_total=%d slides_sent=%s..%s num_ctx=%s model=%s",
+                idx, name, evidence_source, used_sections,
+                criterion_coverage.chars_sent, criterion_coverage.chars_total,
+                criterion_coverage.slides_sent_min, criterion_coverage.slides_sent_max,
+                user_options.get("num_ctx", "<default>"), model_to_use,
+            )
+
+            structured_prompt = _build_structured_criterion_prompt(
+                criterion, criterion_text, filename, metadata
+            )
+            # Ollama is held to the JSON schema; we round-trip through
+            # Pydantic so any drift is caught at parse time.
             result = await ollama_service.generate(
-                prompt, system=system_prompt, model=model_to_use, options=user_options
+                structured_prompt,
+                system=system_prompt,
+                model=model_to_use,
+                options=user_options,
+                format=structured_schema,
             )
-            score = _extract_score(result.output)
-            status = _extract_status(result.output)
+
+            try:
+                payload = StructuredFindingPayload.model_validate_json(result.output)
+                finding = payload.finding
+            except (ValidationError, ValueError) as e:
+                # Fail-soft: log, emit error event, skip persistence for
+                # this criterion. We don't retry inline because the
+                # streaming flow shows one row per criterion in real time.
+                logger.warning(
+                    "criterion %d (%s) returned invalid structured output: %s",
+                    idx, name, e,
+                )
+                yield {
+                    "event": "criterion_error",
+                    "data": {"index": idx, "name": name, "error": "invalid model output"},
+                }
+                continue
+
+            # Server overrides — never trust client/model fields that
+            # control identity or quality interpretation.
+            finding.criterion_index = idx
+            finding.criterion_name = name
+            finding.verdict = verdict_from_score(finding.score)
+            # Per-criterion coverage. When evidence_source narrowed
+            # the input to specific sections, this reflects the
+            # narrowed slide range. The coverage chip in the UI uses
+            # this to flag citations outside the reviewed window.
+            finding.coverage = criterion_coverage
+
+            findings.append(finding.model_dump(mode="json"))
+
+            # Render the finding to Markdown for the legacy export path.
+            markdown = _structured_to_markdown(finding)
+            results.append((idx, name, markdown, result.duration_ms))
+
             yield {
                 "event": "criterion_done",
                 "data": {
                     "index": idx,
                     "name": name,
-                    "status": status,
-                    "score": score,
-                    "markdown": f"## {idx + 1}. {name}\n\n{result.output}",
+                    "status": finding.verdict,  # 'strong'|'adequate'|'weak'
+                    "score": finding.score,
+                    "markdown": f"## {idx + 1}. {name}\n\n{markdown}",
+                    "finding": findings[-1],
                     "duration_ms": result.duration_ms,
                 },
             }
-            results.append((idx, name, result.output, result.duration_ms))
         except Exception as e:
             logger.warning("criterion %d (%s) failed: %s", idx, name, e)
             yield {
@@ -789,6 +1139,7 @@ async def run_review_streaming(
             framework_ids=[f.id for f in frameworks],
             disabled_criteria=list(disabled_set),
             document_class=document_class,
+            findings=findings,
         )
         db.add(row)
         await db.commit()

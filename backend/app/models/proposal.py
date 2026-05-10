@@ -17,6 +17,10 @@ class Proposal(Base):
     title:         Mapped[str]        = mapped_column(String(300), nullable=False)
     client_name:   Mapped[str]        = mapped_column(String(200), nullable=False, default="")
     status:        Mapped[str]        = mapped_column(String(32), nullable=False, default="draft")
+    # Data-sovereignty classification — `Restricted` is the default and
+    # pins LLM inference to local providers only (gated in
+    # app.services.proposal_review.llm_client). Added by V014.
+    classification: Mapped[str]       = mapped_column(String(16), nullable=False, default="Restricted")
     sections:      Mapped[list[dict]] = mapped_column(JSONB, nullable=False, default=list)
     notes:         Mapped[str]        = mapped_column(Text, nullable=False, default="")
     created_at:    Mapped[datetime]   = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

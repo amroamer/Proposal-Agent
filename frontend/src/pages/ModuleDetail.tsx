@@ -5,12 +5,22 @@ import {
 } from "lucide-react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { getReview, type ReviewDetail } from "../api/reviews";
+import {
+  getReview,
+  type ReviewDetail,
+  type StructuredFinding,
+} from "../api/reviews";
 import { extractApiError } from "../api/client";
 import {
   parseReviewOutput,
   type ParsedCriterion,
 } from "../utils/reviewOutput";
+import { StructuredFindingPanel } from "../components/reviews/StructuredFindingPanel";
+import {
+  SlideCitationDrawer,
+  extractSlideText,
+  type SlideContext,
+} from "../components/reviews/SlideCitationDrawer";
 
 type FindingStatus = "must" | "moderate" | "nice" | "unknown";
 
@@ -227,6 +237,24 @@ export function ModuleDetailPage() {
   const active = criteria.find(c => c.index === targetIdx);
   const findings = useMemo(() => (active ? findingsFor(active) : []), [active]);
 
+  // V019 structured findings — match by criterion_index against the
+  // legacy `targetIdx` (1-based in the URL, 0-based in storage).
+  const structuredFinding: StructuredFinding | null = useMemo(() => {
+    const list = data?.findings ?? [];
+    if (list.length === 0) return null;
+    return list.find((f) => f.criterion_index === targetIdx - 1) ?? null;
+  }, [data?.findings, targetIdx]);
+
+  // Slide citation drawer — opened when an operator clicks a slide chip.
+  const [slideContext, setSlideContext] = useState<SlideContext | null>(null);
+  const onSlideClick = (slideNumber: number) => {
+    if (!data) return;
+    setSlideContext({
+      number: slideNumber,
+      excerpt: extractSlideText(data.extracted_text, slideNumber),
+    });
+  };
+
   if (error) {
     return (
       <div className="space-y-4 max-w-4xl">
@@ -336,13 +364,26 @@ export function ModuleDetailPage() {
             <h1 className="text-[28px] md:text-[36px] font-bold text-pa-ink tracking-[-0.7px] leading-tight max-w-[640px]">
               {active.name}
             </h1>
-            <div className="text-[60px] md:text-[64px] font-bold text-kpmg-blue tabular-nums leading-none tracking-[-2px]">
-              {active.score == null ? "—" : active.score}
-            </div>
+            {/* Hero score — when we have structured data the verdict
+                + score are repeated more prominently in the panel
+                below, so drop the giant number here. */}
+            {!structuredFinding && (
+              <div className="text-[60px] md:text-[64px] font-bold text-kpmg-blue tabular-nums leading-none tracking-[-2px]">
+                {active.score == null ? "—" : active.score}
+              </div>
+            )}
           </div>
         </section>
 
-        {/* FINDINGS TABLE */}
+        {/* PRIMARY PANEL — structured findings when present, legacy
+            findings table as fallback. */}
+        {structuredFinding ? (
+          <StructuredFindingPanel
+            finding={structuredFinding}
+            onSlideClick={onSlideClick}
+          />
+        ) : (
+
         <section className="rounded-2xl bg-white border border-pa-line overflow-hidden">
           <div
             className="hidden md:grid gap-4 px-6 py-3 border-b border-pa-line-soft text-[10.5px] font-bold uppercase tracking-[0.1em] text-pa-muted"
@@ -438,7 +479,18 @@ export function ModuleDetailPage() {
             </ul>
           )}
         </section>
+        )}
       </div>
+
+      {/* Slide citation drawer — global to the page, controlled by
+          slideContext state. Opens when a slide chip in any panel is
+          clicked. */}
+      <SlideCitationDrawer
+        reviewId={data.id}
+        slide={slideContext}
+        onClose={() => setSlideContext(null)}
+        filename={data.source_filename}
+      />
     </div>
   );
 }

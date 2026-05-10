@@ -1,6 +1,11 @@
 """Pydantic DTOs for review-framework endpoints."""
 from datetime import datetime
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+from app.services.proposal_review.group_routing import (
+    DEFAULT_FALLBACK,
+    validate_evidence_source,
+)
 
 
 class FrameworkCriterion(BaseModel):
@@ -11,6 +16,18 @@ class FrameworkCriterion(BaseModel):
     prompt_instruction_en: str = Field("", max_length=5000)
     prompt_instruction_ar: str = Field("", max_length=5000)
     group: str = Field("", max_length=200)
+    # Phase-5 routing override. Either ["*"] (whole proposal) or a list
+    # of canonical section_keys from
+    # app.services.proposal_review.section_mapping.SECTION_KEYS.
+    # Defaults to ["*"] so any criterion saved without an explicit
+    # value evaluates against the full dossier — same as the runner's
+    # final fallback.
+    evidence_source: list[str] = Field(default_factory=lambda: list(DEFAULT_FALLBACK))
+    # Active flag — when false, the criterion stays in the framework
+    # definition (so the operator can re-enable it later) but the
+    # criterion runner skips it. Defaults to true so any criterion
+    # saved without an explicit value is included.
+    active: bool = True
 
     @model_validator(mode="before")
     @classmethod
@@ -24,6 +41,17 @@ class FrameworkCriterion(BaseModel):
             if "prompt_instruction" in data and "prompt_instruction_en" not in data:
                 data["prompt_instruction_en"] = data.pop("prompt_instruction", "")
         return data
+
+    @field_validator("evidence_source", mode="before")
+    @classmethod
+    def _coerce_evidence_source(cls, v):
+        # Re-use the canonical validator: rejects ['*'] mixed with
+        # other keys, rejects unknown section_keys, dedupes, and falls
+        # back to DEFAULT_FALLBACK when None / empty. Raises ValueError
+        # on bad input — surfaced as a 422 by FastAPI.
+        if v is None:
+            return list(DEFAULT_FALLBACK)
+        return validate_evidence_source(list(v))
 
     @model_validator(mode="after")
     def require_at_least_one_name(self):

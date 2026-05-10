@@ -24,12 +24,20 @@ router = APIRouter(prefix="/frameworks", tags=["frameworks"])
 
 
 def _summary(row) -> FrameworkSummary:
+    # criteria_count is the number of *active* criteria — this is the
+    # count the framework picker on the proposal-review screen should
+    # show, since inactive criteria are filtered out before review runs.
+    # Legacy criteria stored without an `active` key are treated as
+    # active (default-true everywhere else).
+    active_count = sum(
+        1 for c in (row.criteria or []) if c.get("active", True) is not False
+    )
     return FrameworkSummary(
         id=row.id,
         owner_user_id=row.owner_user_id,
         name=row.name,
         is_public=row.is_public,
-        criteria_count=len(row.criteria or []),
+        criteria_count=active_count,
         updated_at=row.updated_at,
     )
 
